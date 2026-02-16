@@ -3,9 +3,9 @@ import { useEffect, useState, useRef } from "react";
 import TopBar from "./TopBar";
 import { Stage } from "./Stage";
 import BottomControls from "./BottomControls";
-import StageContextMenu from "./StageContextMenu";
 import { LoadedFile } from "../players/PlayerContract";
 
+type LogLanguage = "en" | "ua";
 
 export default function WindowLayout() {
   // ===== Window state =====
@@ -27,6 +27,12 @@ export default function WindowLayout() {
 
   // ===== Current file (SINGLE SOURCE OF TRUTH) =====
   const [file, setFile] = useState<LoadedFile | null>(null);
+
+  // Animation info panel visibility (pure React state, no IPC)
+  const [showInfo, setShowInfo] = useState(false);
+
+  // Language for Log diagnostics (EN / UA)
+  const [logLanguage, setLogLanguage] = useState<LogLanguage>("en");
 
 
   useEffect(() => {
@@ -71,12 +77,23 @@ export default function WindowLayout() {
 
 
 
-      <TopBar windowState={windowState} file={file} />
+      <TopBar
+        windowState={windowState}
+        file={file}
+        showInfo={showInfo}
+        logLanguage={logLanguage}
+        onToggleInfo={() => setShowInfo((v) => !v)}
+        onToggleInfoLanguage={() =>
+          setLogLanguage((prev) => (prev === "en" ? "ua" : "en"))
+        }
+      />
 
       {/* Stage — flex-1 + min-h-0 щоб приймав залишок простору і міг стискатися */}
       <div className="flex-1 min-h-0 flex flex-col">
         <Stage
           file={file}
+          showInfo={showInfo}
+          logLanguage={logLanguage}
           onFileDrop={(path) => window.api?.openFileByPath?.(path)}
         />
       </div>

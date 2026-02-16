@@ -13,6 +13,11 @@ import { FallbackPlayer } from "../players/FallbackPlayer/FallbackPlayer";
 
 import { PlayerWarnings } from "../components/PlayerWarnings";
 import StageContextMenu from "../components/StageContextMenu";
+import {
+  analyzeAnimation,
+  AnimationDiagnostics,
+} from "../core/analyzers/animationAnalyzer";
+import { AnimationInfoPanel } from "./ui/AnimationInfoPanel";
 
 // ─────────────────────────────────────────────
 // STAGE = ЄДИНИЙ ЦЕНТР КЕРУВАННЯ PLAYER STATE
@@ -20,12 +25,16 @@ import StageContextMenu from "../components/StageContextMenu";
 
 const VALID_EXTENSIONS = ["json", "lottie", "webm"];
 
+type LogLanguage = "en" | "ua";
+
 type Props = {
   file: LoadedFile | null;
   onFileDrop?: (filePath: string) => void;
+  showInfo: boolean;
+  logLanguage: LogLanguage;
 };
 
-export function Stage({ file, onFileDrop }: Props) {
+export function Stage({ file, onFileDrop, showInfo, logLanguage }: Props) {
   // ─────────────────────────────────────────────
   // PLAYER STATUS
   // ─────────────────────────────────────────────
@@ -33,6 +42,13 @@ export function Stage({ file, onFileDrop }: Props) {
   const [status, setStatus] = useState<PlayerStatus>({
     type: "idle",
   });
+
+  // ─────────────────────────────────────────────
+  // ANIMATION DIAGNOSTICS (Stage-level state)
+  // ─────────────────────────────────────────────
+
+  const [diagnostics, setDiagnostics] =
+    useState<AnimationDiagnostics | null>(null);
 
   // ─────────────────────────────────────────────
   // SCALE SYSTEM
@@ -150,6 +166,25 @@ export function Stage({ file, onFileDrop }: Props) {
       default:
         return FallbackPlayer;
     }
+  }, [file]);
+
+  // ─────────────────────────────────────────────
+  // ANIMATION ANALYSIS (Stage orchestrates, Player stays pure render)
+  // ─────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!file) {
+      setDiagnostics(null);
+      return;
+    }
+
+    // Analyze all supported formats: json, lottie, webm
+    analyzeAnimation(file).then((diag) => {
+      setDiagnostics(diag);
+    }).catch((err) => {
+      console.error("[Stage] Analysis error:", err);
+      setDiagnostics(null);
+    });
   }, [file]);
 
   // ─────────────────────────────────────────────
@@ -291,6 +326,13 @@ export function Stage({ file, onFileDrop }: Props) {
           onStatus={handleStatus}
         />
       </div>
+
+      {/* Animation technical diagnostics panel */}
+      <AnimationInfoPanel
+        diagnostics={diagnostics}
+        visible={showInfo}
+        language={logLanguage}
+      />
 
       {/* ZOOM INDICATOR */}
       {scaleMode === "original" && showZoomIndicator && (

@@ -1,8 +1,14 @@
 import { LoadedFile } from "../players/PlayerContract";
 
+type LogLanguage = "en" | "ua";
+
 type Props = {
   windowState: "normal" | "maximized";
   file: LoadedFile | null;
+  showInfo: boolean;
+  logLanguage: LogLanguage;
+  onToggleInfo: () => void;
+  onToggleInfoLanguage: () => void;
 };
 
 function getPathParts(file: LoadedFile): { dir: string; name: string } {
@@ -13,9 +19,22 @@ function getPathParts(file: LoadedFile): { dir: string; name: string } {
   return { dir: path.slice(0, lastSep + 1), name: file.name };
 }
 
-export default function TopBar({ windowState, file }: Props) {
+export default function TopBar({
+  windowState,
+  file,
+  showInfo,
+  logLanguage,
+  onToggleInfo,
+  onToggleInfoLanguage,
+}: Props) {
   const isMaximized = windowState === "maximized";
   const pathParts = file ? getPathParts(file) : null;
+
+  const logLabel = logLanguage === "en" ? "Log" : "Лог";
+  const logTooltip =
+    logLanguage === "en"
+      ? "Show animation technical information"
+      : "Показати технічну інформацію анімації";
 
   return (
     <div
@@ -45,6 +64,24 @@ export default function TopBar({ windowState, file }: Props) {
           title="Left click - change transparency&#10;Right click - change color"
         >
           BG
+        </button>
+
+        <button
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            showInfo
+              ? "bg-emerald-600 text-white"
+              : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
+          }`}
+          onClick={onToggleInfo}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (showInfo) {
+              onToggleInfoLanguage();
+            }
+          }}
+          title={logTooltip}
+        >
+          {logLabel}
         </button>
       </div>
 
