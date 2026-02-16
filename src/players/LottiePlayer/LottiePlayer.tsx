@@ -154,17 +154,54 @@ export function LottiePlayer({
           if (preferredIdx >= 0) animationPath = allPaths[preferredIdx].replace(/\\/g, "/");
         }
 
-        const animationEntry = animationPath ? zip.file(animationPath) : null;
+        let animationEntry = animationPath ? zip.file(animationPath) : null;
 
         if (!animationEntry) {
-          onStatus?.({
-            type: "error",
-            error: {
-              code: "NO_ANIMATION_JSON",
-              message: "У .lottie відсутній animation.json або data.json",
-            },
-          });
-          return;
+          // Try to find any JSON file as last resort
+          const anyJsonPath = allPaths.find(
+            (p) => !p.endsWith("/") && p.toLowerCase().endsWith(".json") && p !== "manifest.json"
+          );
+          
+          if (anyJsonPath) {
+            const fallbackEntry = zip.file(anyJsonPath);
+            if (fallbackEntry) {
+              // Try to parse and validate it has animation structure
+              try {
+                const fallbackText = await fallbackEntry.async("text");
+                const fallbackData = JSON.parse(fallbackText);
+                if (fallbackData && typeof fallbackData === "object" && 
+                    typeof fallbackData.w === "number" && typeof fallbackData.h === "number") {
+                  animationPath = anyJsonPath.replace(/\\/g, "/");
+                  animationEntry = fallbackEntry;
+                  // Continue with this JSON
+                } else {
+                  onStatus?.({
+                    type: "error",
+                    error: {
+                      code: "NO_VALID_ANIMATION_JSON",
+                      message: "У .lottie відсутній валідний animation.json з полями w та h",
+                      details: `Знайдено JSON файл ${anyJsonPath}, але він не містить валідної структури анімації`,
+                    },
+                  });
+                  return;
+                }
+              } catch {
+                // Fall through to error below
+              }
+            }
+          }
+          
+          if (!animationEntry) {
+            onStatus?.({
+              type: "error",
+              error: {
+                code: "NO_ANIMATION_JSON",
+                message: "У .lottie відсутній animation.json або data.json",
+                details: "Перевірте структуру .lottie файлу. Очікується manifest.json або animation.json/data.json",
+              },
+            });
+            return;
+          }
         }
 
         const animationText = await animationEntry.async("text");
@@ -196,15 +233,35 @@ export function LottiePlayer({
           return;
         }
 
-        const w =
-          typeof animationData.w === "number" && animationData.w > 0
-            ? animationData.w
-            : 1000;
-        const h =
-          typeof animationData.h === "number" && animationData.h > 0
-            ? animationData.h
-            : 1000;
+        // Validate required fields (w, h, fr)
+        const w = typeof animationData.w === "number" && animationData.w > 0 ? animationData.w : null;
+        const h = typeof animationData.h === "number" && animationData.h > 0 ? animationData.h : null;
+        const fr = typeof animationData.fr === "number" && animationData.fr > 0 ? animationData.fr : null;
+
+        if (!w || !h) {
+          onStatus?.({
+            type: "error",
+            error: {
+              code: "MISSING_DIMENSIONS",
+              message: "Animation JSON має містити валідні поля w (width) та h (height)",
+              details: `w: ${w}, h: ${h}`,
+            },
+          });
+          return;
+        }
+
+        if (!fr) {
+          warnings.push({
+            code: "MISSING_FRAME_RATE",
+            message: "Animation JSON не містить поля fr (frame rate), використовується значення за замовчуванням",
+          });
+        }
+
         sizeRef.current = { w, h };
+
+        // Deep clone animationData to avoid prop mutation
+        // This ensures we don't modify the original parsed JSON
+        const clonedAnimationData = JSON.parse(JSON.stringify(animationData)) as Record<string, unknown>;
 
         // Animation folder (e.g. "animations/0/" when animation is "animations/0/animation.json")
         const animationBaseDir = animationPath
@@ -241,7 +298,8 @@ export function LottiePlayer({
         }
         if (destroyed) return;
 
-        const assets = animationData.assets as Array<{
+        // Work with cloned data to avoid prop mutation
+        const assets = clonedAnimationData.assets as Array<{
           layers?: unknown[];
           u?: string;
           p?: string;
@@ -259,6 +317,7 @@ export function LottiePlayer({
               imageDataUrls[`images/${asset.p}`] ??
               imageDataUrls[asset.p?.replace?.(/^.*\//, "") ?? ""];
             if (dataUrl) {
+              // Safe to mutate cloned data
               asset.e = 1;
               asset.p = dataUrl;
             } else {
@@ -275,7 +334,7 @@ export function LottiePlayer({
           renderer: "svg",
           loop: true,
           autoplay: true,
-          animationData,
+          animationData: clonedAnimationData,
           rendererSettings: {
             preserveAspectRatio: "xMidYMid meet",
           },
@@ -313,16 +372,31 @@ export function LottiePlayer({
         });
       } catch (err) {
         if (destroyed) return;
-        const message =
-          err instanceof Error && err.message?.toLowerCase().includes("zip")
-            ? "Неможливо розпакувати .lottie (некоректний zip)"
-            : "Помилка завантаження .lottie";
+        
+        // Provide more specific error messages based on error type
+        let message = "Помилка завантаження .lottie";
+        let code = "LOTTIE_LOAD_FAILED";
+        
+        if (err instanceof Error) {
+          const errMsg = err.message?.toLowerCase() || "";
+          if (errMsg.includes("zip") || errMsg.includes("corrupt") || errMsg.includes("invalid")) {
+            message = "Неможливо розпакувати .lottie (некоректний або пошкоджений zip-архів)";
+            code = "CORRUPT_ZIP";
+          } else if (errMsg.includes("not found") || errMsg.includes("missing")) {
+            message = "Відсутній або недоступний файл .lottie";
+            code = "FILE_NOT_FOUND";
+          } else if (errMsg.includes("permission") || errMsg.includes("access")) {
+            message = "Немає доступу до файлу .lottie";
+            code = "ACCESS_DENIED";
+          }
+        }
+        
         onStatus?.({
           type: "error",
           error: {
-            code: "LOTTIE_LOAD_FAILED",
+            code,
             message,
-            details: String(err),
+            details: err instanceof Error ? err.message : String(err),
           },
         });
       }
