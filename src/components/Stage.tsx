@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { LoadedFile } from "../players/PlayerContract";
+import { LoadedFile, AnimationControls } from "../players/PlayerContract";
 import { PlayerWarnings } from "../components/PlayerWarnings";
 import StageContextMenu from "../components/StageContextMenu";
 import { AnimationInfoPanel } from "./ui/AnimationInfoPanel";
@@ -16,9 +16,10 @@ type Props = {
   onFileDrop?: (filePath: string) => void;
   showInfo: boolean;
   logLanguage: LogLanguage;
+  onControlsReady?: (controls: AnimationControls) => void;
 };
 
-export function Stage({ file, onFileDrop, showInfo, logLanguage }: Props) {
+export function Stage({ file, onFileDrop, showInfo, logLanguage, onControlsReady }: Props) {
   // Use extracted logic hook
   const { state, actions } = useStageLogic(file, onFileDrop);
 
@@ -113,6 +114,7 @@ export function Stage({ file, onFileDrop, showInfo, logLanguage }: Props) {
           background={state.background}
           panOffset={state.scaleMode === "original" ? state.offset : undefined}
           onStatus={actions.handleStatus}
+          onControlsReady={onControlsReady}
         />
       </div>
 

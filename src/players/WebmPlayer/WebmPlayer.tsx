@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PlayerProps } from "../PlayerContract";
+import { PlayerProps, AnimationControls, AnimationInfo } from "../PlayerContract";
 
 // ─────────────────────────────────────────────
 // WebmPlayer — .webm only
@@ -19,10 +19,14 @@ export function WebmPlayer({
   background,
   panOffset = { x: 0, y: 0 },
   onStatus,
+  onControlsReady,
 }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoSize, setVideoSize] = useState<{ w: number; h: number } | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const frameRateRef = useRef<number>(30); // Default 30 fps for WebM
+  const frameChangeCallbackRef = useRef<((frame: number) => void) | undefined>();
+  const playStateChangeCallbackRef = useRef<((isPlaying: boolean) => void) | undefined>();
 
   // ─────────────────────────────────────────────
   // INIT / LOAD (blob URL from buffer, cleanup on unmount or file change)
@@ -74,11 +78,123 @@ export function WebmPlayer({
     const video = videoRef.current;
     if (!video) return;
 
+    // Set up timeupdate listener for frame updates
+    const onTimeUpdate = () => {
+      const video = videoRef.current;
+      if (video && frameChangeCallbackRef.current) {
+        const frame = Math.round(video.currentTime * frameRateRef.current);
+        frameChangeCallbackRef.current(frame);
+      }
+    };
+
+    // Set up play/pause state listeners
+    const onPlay = () => {
+      playStateChangeCallbackRef.current?.(true);
+    };
+
+    const onPause = () => {
+      playStateChangeCallbackRef.current?.(false);
+    };
+
+    const onEnded = () => {
+      playStateChangeCallbackRef.current?.(false);
+    };
+
     const onLoadedMetadata = () => {
       const w = video.videoWidth || 1;
       const h = video.videoHeight || 1;
       setVideoSize({ w, h });
+
+      // Create controls after metadata is loaded
+      const getInfo = (): AnimationInfo | null => {
+        const video = videoRef.current;
+        if (!video || !Number.isFinite(video.duration) || video.duration <= 0) {
+          return null;
+        }
+
+        const duration = video.duration;
+        const fps = frameRateRef.current;
+        const totalFrames = Math.round(duration * fps);
+
+        return {
+          totalFrames,
+          frameRate: fps,
+          duration,
+        };
+      };
+
+      const controls: AnimationControls = {
+        play: () => {
+          const video = videoRef.current;
+          if (video) {
+            video.play().catch((err) => {
+              console.error("[WebmPlayer] Play error:", err);
+              onStatus?.({
+                type: "error",
+                error: {
+                  code: "PLAY_FAILED",
+                  message: "Failed to play video",
+                  details: String(err),
+                },
+              });
+            });
+            playStateChangeCallbackRef.current?.(true);
+          }
+        },
+        pause: () => {
+          const video = videoRef.current;
+          if (video) {
+            video.pause();
+            playStateChangeCallbackRef.current?.(false);
+          }
+        },
+        seek: (frame: number) => {
+          const video = videoRef.current;
+          if (video) {
+            const info = getInfo();
+            if (info) {
+              const clampedFrame = Math.max(0, Math.min(frame, info.totalFrames - 1));
+              const timeInSeconds = clampedFrame / info.frameRate;
+              video.currentTime = timeInSeconds;
+              frameChangeCallbackRef.current?.(clampedFrame);
+            }
+          }
+        },
+        setSpeed: (speed: number) => {
+          const video = videoRef.current;
+          if (video) {
+            video.playbackRate = speed;
+          }
+        },
+        getCurrentFrame: () => {
+          const video = videoRef.current;
+          if (!video || !Number.isFinite(video.currentTime)) {
+            return 0;
+          }
+          return Math.round(video.currentTime * frameRateRef.current);
+        },
+        getIsPlaying: () => {
+          const video = videoRef.current;
+          if (!video) return false;
+          return !video.paused && !video.ended;
+        },
+        getInfo,
+        get onFrameChange() {
+          return frameChangeCallbackRef.current;
+        },
+        set onFrameChange(callback: ((frame: number) => void) | undefined) {
+          frameChangeCallbackRef.current = callback;
+        },
+        get onPlayStateChange() {
+          return playStateChangeCallbackRef.current;
+        },
+        set onPlayStateChange(callback: ((isPlaying: boolean) => void) | undefined) {
+          playStateChangeCallbackRef.current = callback;
+        },
+      };
+
       onStatus?.({ type: "ready" });
+      onControlsReady?.(controls);
     };
 
     const onError = () => {
@@ -93,12 +209,20 @@ export function WebmPlayer({
 
     video.addEventListener("loadedmetadata", onLoadedMetadata);
     video.addEventListener("error", onError);
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("ended", onEnded);
 
     return () => {
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("error", onError);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("ended", onEnded);
     };
-  }, [videoSrc]);
+  }, [videoSrc, onStatus, onControlsReady]);
 
   // ─────────────────────────────────────────────
   // RENDER (fit = aspect-ratio contain, original = natural size + scale + pan)
@@ -151,7 +275,7 @@ export function WebmPlayer({
         <video
           ref={videoRef}
           src={videoSrc ?? undefined}
-          autoPlay
+          autoPlay={false}
           loop
           muted
           playsInline

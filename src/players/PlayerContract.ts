@@ -58,6 +58,28 @@ export interface PlayerError {
 }
 
 // ─────────────────────────────────────────────
+// ANIMATION CONTROL (Player → Controls)
+// ─────────────────────────────────────────────
+
+export interface AnimationInfo {
+  totalFrames: number
+  frameRate: number
+  duration: number // in seconds
+}
+
+export interface AnimationControls {
+  play: () => void
+  pause: () => void
+  seek: (frame: number) => void
+  setSpeed: (speed: number) => void
+  getCurrentFrame: () => number
+  getIsPlaying: () => boolean
+  getInfo: () => AnimationInfo | null
+  onFrameChange?: (frame: number) => void
+  onPlayStateChange?: (isPlaying: boolean) => void
+}
+
+// ─────────────────────────────────────────────
 // STAGE → PLAYER PROPS (MANDATORY)
 // ─────────────────────────────────────────────
 
@@ -74,4 +96,7 @@ export interface PlayerProps {
 
   // Communication back to Stage
   onStatus?: (status: PlayerStatus) => void
+
+  // Animation control registration (optional, for players that support it)
+  onControlsReady?: (controls: AnimationControls) => void
 }

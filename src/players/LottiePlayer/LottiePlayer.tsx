@@ -6,6 +6,8 @@ import {
   PlayerProps,
   PlayerStatus,
   PlayerWarning,
+  AnimationControls,
+  AnimationInfo,
 } from "../PlayerContract";
 
 // ─────────────────────────────────────────────
@@ -26,11 +28,15 @@ export function LottiePlayer({
   background,
   panOffset = { x: 0, y: 0 },
   onStatus,
+  onControlsReady,
 }: PlayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationRef = useRef<ReturnType<typeof lottie.loadAnimation> | null>(null);
   const sizeRef = useRef<{ w: number; h: number } | null>(null);
   const imageUrlsRef = useRef<string[]>([]);
+  const animationDataRef = useRef<Record<string, unknown> | null>(null);
+  const frameChangeCallbackRef = useRef<((frame: number) => void) | undefined>();
+  const playStateChangeCallbackRef = useRef<((isPlaying: boolean) => void) | undefined>();
 
   // ─────────────────────────────────────────────
   // INIT / LOAD
@@ -262,6 +268,9 @@ export function LottiePlayer({
         // Deep clone animationData to avoid prop mutation
         // This ensures we don't modify the original parsed JSON
         const clonedAnimationData = JSON.parse(JSON.stringify(animationData)) as Record<string, unknown>;
+        
+        // Store animation data for controls
+        animationDataRef.current = clonedAnimationData;
 
         // Animation folder (e.g. "animations/0/" when animation is "animations/0/animation.json")
         const animationBaseDir = animationPath
@@ -340,6 +349,90 @@ export function LottiePlayer({
           },
         });
 
+        // ─────────────────────────────────────────────
+        // Animation Controls Setup
+        // ─────────────────────────────────────────────
+
+        const getInfo = (): AnimationInfo | null => {
+          const data = animationDataRef.current;
+          if (!data) return null;
+
+          const frameRate = typeof data.fr === "number" && data.fr > 0 ? data.fr : 30;
+          const ip = typeof data.ip === "number" ? data.ip : 0;
+          const op = typeof data.op === "number" ? data.op : 0;
+          const totalFrames = Math.max(0, op - ip);
+          const duration = frameRate > 0 ? totalFrames / frameRate : 0;
+
+          return {
+            totalFrames,
+            frameRate,
+            duration,
+          };
+        };
+
+        const controls: AnimationControls = {
+          play: () => {
+            if (animationRef.current && !destroyed) {
+              animationRef.current.play();
+              playStateChangeCallbackRef.current?.(true);
+            }
+          },
+          pause: () => {
+            if (animationRef.current && !destroyed) {
+              animationRef.current.pause();
+              playStateChangeCallbackRef.current?.(false);
+            }
+          },
+          seek: (frame: number) => {
+            if (animationRef.current && !destroyed) {
+              const info = getInfo();
+              if (info) {
+                const clampedFrame = Math.max(0, Math.min(frame, info.totalFrames - 1));
+                animationRef.current.goToAndStop(clampedFrame, true);
+                frameChangeCallbackRef.current?.(clampedFrame);
+              }
+            }
+          },
+          setSpeed: (speed: number) => {
+            if (animationRef.current && !destroyed) {
+              animationRef.current.setSpeed(speed);
+            }
+          },
+          getCurrentFrame: () => {
+            if (animationRef.current && !destroyed) {
+              return Math.round(animationRef.current.currentFrame);
+            }
+            return 0;
+          },
+          getIsPlaying: () => {
+            if (animationRef.current && !destroyed) {
+              return animationRef.current.isPaused === false;
+            }
+            return false;
+          },
+          getInfo,
+          get onFrameChange() {
+            return frameChangeCallbackRef.current;
+          },
+          set onFrameChange(callback: ((frame: number) => void) | undefined) {
+            frameChangeCallbackRef.current = callback;
+          },
+          get onPlayStateChange() {
+            return playStateChangeCallbackRef.current;
+          },
+          set onPlayStateChange(callback: ((isPlaying: boolean) => void) | undefined) {
+            playStateChangeCallbackRef.current = callback;
+          },
+        };
+
+        // Set up frame update listener
+        animationRef.current.addEventListener("enterFrame", () => {
+          if (animationRef.current && !destroyed && frameChangeCallbackRef.current) {
+            const frame = Math.round(animationRef.current.currentFrame);
+            frameChangeCallbackRef.current(frame);
+          }
+        });
+
         const reportReady = (): void => {
           if (destroyed) return;
           const status: PlayerStatus =
@@ -347,6 +440,7 @@ export function LottiePlayer({
               ? { type: "warning", warnings }
               : { type: "ready" };
           onStatus?.(status);
+          onControlsReady?.(controls);
         };
 
         animationRef.current.addEventListener("DOMLoaded", () => {

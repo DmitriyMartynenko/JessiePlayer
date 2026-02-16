@@ -4,6 +4,7 @@ import TopBar from "./TopBar";
 import { Stage } from "./Stage";
 import BottomControls from "./BottomControls";
 import { LoadedFile } from "../players/PlayerContract";
+import { useAnimationControls } from "../hooks/useAnimationControls";
 
 type LogLanguage = "en" | "ua";
 
@@ -34,6 +35,48 @@ export default function WindowLayout() {
   // Language for Log diagnostics (EN / UA)
   const [logLanguage, setLogLanguage] = useState<LogLanguage>("en");
 
+  // ===== Animation Controls =====
+  const animationControls = useAnimationControls();
+
+  // Reset controls when file changes
+  useEffect(() => {
+    animationControls.actions.registerControls(null);
+  }, [file]);
+
+  // ─────────────────────────────────────────────
+  // Global Spacebar Hotkey (Play/Pause)
+  // ─────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle Spacebar
+      if (e.key !== " " && e.code !== "Space") return;
+
+      // Don't interfere if user is typing in an input field
+      const activeElement = document.activeElement;
+      const isInputFocused =
+        activeElement &&
+        (activeElement.tagName === "INPUT" ||
+          activeElement.tagName === "TEXTAREA" ||
+          activeElement.isContentEditable);
+
+      if (isInputFocused) return;
+
+      // Only work if we have a file loaded and controls available
+      if (!file || !animationControls.state.info) return;
+
+      // Prevent default scrolling behavior
+      e.preventDefault();
+
+      // Toggle play/pause
+      animationControls.actions.togglePlayPause();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [file, animationControls.state.info, animationControls.actions]);
 
   useEffect(() => {
     if (!window.api) {
@@ -95,6 +138,7 @@ export default function WindowLayout() {
           showInfo={showInfo}
           logLanguage={logLanguage}
           onFileDrop={(path) => window.api?.openFileByPath?.(path)}
+          onControlsReady={animationControls.actions.registerControls}
         />
       </div>
 
@@ -107,7 +151,11 @@ export default function WindowLayout() {
 
 
 
-      <BottomControls />
+      <BottomControls
+        state={animationControls.state}
+        actions={animationControls.actions}
+        speedOptions={animationControls.constants.SPEED_OPTIONS}
+      />
     </div>
   );
 }
