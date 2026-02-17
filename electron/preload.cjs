@@ -24,6 +24,18 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  /* ===== Fullscreen ===== */
+
+  toggleFullScreen: () => {
+    ipcRenderer.send("ui:toggle-fullscreen");
+  },
+
+  onFullScreenChanged: (callback) => {
+    ipcRenderer.on("app:full-screen-changed", (_event, isFullScreen) => {
+      callback(!!isFullScreen);
+    });
+  },
+
   /* ===== Stage / background ===== */
 
   toggleBackground: () => {
@@ -55,6 +67,26 @@ contextBridge.exposeInMainWorld('api', {
 
   openFileByPath: (filePath) => {
     ipcRenderer.send('ui:open-file-by-path', filePath);
+  },
+
+  getDirectoryFiles: (dirPath) => {
+    return ipcRenderer.invoke("get-directory-files", dirPath);
+  },
+
+  getParentDirectory: (dirPath) => {
+    return ipcRenderer.invoke("get-parent-directory", dirPath);
+  },
+
+  readSettings: () => {
+    return ipcRenderer.invoke("read-settings");
+  },
+
+  writeSettings: (patch) => {
+    return ipcRenderer.invoke("write-settings", patch);
+  },
+
+  openFileIPC: (filePath) => {
+    return ipcRenderer.invoke("open-file", filePath);
   },
 
   /* ===== Subscriptions (поки заглушки) ===== */

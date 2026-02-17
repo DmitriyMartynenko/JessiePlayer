@@ -10,9 +10,17 @@ type Props = {
   state: AnimationState;
   actions: ReturnType<typeof useAnimationControls>["actions"];
   speedOptions: readonly SpeedOption[];
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 };
 
-export default function BottomControls({ state, actions, speedOptions }: Props) {
+export default function BottomControls({
+  state,
+  actions,
+  speedOptions,
+  sidebarOpen,
+  onToggleSidebar,
+}: Props) {
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [isDraggingTimeline, setIsDraggingTimeline] = useState(false);
   const speedMenuRef = useRef<HTMLDivElement>(null);
@@ -175,15 +183,16 @@ export default function BottomControls({ state, actions, speedOptions }: Props) 
         )}
       </div>
 
-      {/* Menu Button (placeholder for future implementation) */}
+      {/* Menu Button (sidebar toggle) */}
       <button
-        className="w-8 h-8 flex items-center justify-center rounded bg-neutral-800 hover:bg-neutral-700 transition-colors"
+        className={[
+          "w-8 h-8 flex items-center justify-center rounded transition-colors",
+          sidebarOpen
+            ? "bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/30"
+            : "bg-neutral-800 hover:bg-neutral-700",
+        ].join(" ")}
         title="Menu"
-        disabled
-        style={{
-          opacity: 0.5,
-          cursor: "not-allowed",
-        }}
+        onClick={onToggleSidebar}
       >
         <span className="text-xs">☰</span>
       </button>

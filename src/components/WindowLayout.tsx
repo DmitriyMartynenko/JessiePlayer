@@ -1,14 +1,21 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
 import TopBar from "./TopBar";
 import { Stage } from "./Stage";
 import BottomControls from "./BottomControls";
+import SidebarDrawer, { SIDEBAR_DRAWER_WIDTH } from "./SidebarDrawer";
 import { LoadedFile } from "../players/PlayerContract";
 import { useAnimationControls } from "../hooks/useAnimationControls";
+import { useUiStore } from "../store/uiStore";
 
 type LogLanguage = "en" | "ua";
 
 export default function WindowLayout() {
+  const sidebarOpen = useUiStore((s) => s.sidebarOpen);
+  const isFullScreen = useUiStore((s) => s.isFullScreen);
+  const hydrated = useUiStore((s) => s.hydrated);
+  const uiActions = useUiStore((s) => s.actions);
+
   // ===== Window state =====
   const [windowState, setWindowState] = useState<"normal" | "maximized">(
     "normal"
@@ -108,19 +115,48 @@ export default function WindowLayout() {
 
   }, []);
 
+  // ===== Restore settings (sidebar + fullscreen) =====
+  useEffect(() => {
+    if (!window.api?.readSettings) return;
+
+    window.api
+      .readSettings()
+      .then((settings) => {
+        uiActions.hydrate({
+          sidebarOpen: !!settings?.sidebarOpen,
+          isFullScreen: !!settings?.isFullScreen,
+        });
+      })
+      .catch(() => {
+        uiActions.hydrate({ sidebarOpen: false, isFullScreen: false });
+      });
+
+    window.api?.onFullScreenChanged?.((fs) => {
+      uiActions.setIsFullScreen(fs);
+    });
+  }, []);
+
+  // ===== Persist sidebar open state =====
+  useEffect(() => {
+    if (!hydrated) return;
+    window.api?.writeSettings?.({ sidebarOpen });
+  }, [hydrated, sidebarOpen]);
+
+  // Curtain now compresses ONLY the animation area; top/bottom bars remain full width.
+  const stageRightInsetPx = sidebarOpen ? SIDEBAR_DRAWER_WIDTH : 0;
+
   return (
     <div
-	className="flex flex-col h-screen w-screen text-slate-300 overflow-hidden"
-  	style={{
-    	  backgroundColor: backgroundTheme === "light"
-    	    ? `rgba(255, 255, 255, ${backgroundOpacity})`
-    	    : `rgba(0, 0, 0, ${backgroundOpacity})`,
-  	}}
+      className="relative h-screen w-screen text-slate-300 overflow-hidden"
+      style={{
+        backgroundColor:
+          backgroundTheme === "light"
+            ? `rgba(255, 255, 255, ${backgroundOpacity})`
+            : `rgba(0, 0, 0, ${backgroundOpacity})`,
+      }}
     >
-
-
-
-      <TopBar
+      <div className="flex flex-col h-full w-full">
+        <TopBar
         windowState={windowState}
         file={file}
         showInfo={showInfo}
@@ -129,33 +165,44 @@ export default function WindowLayout() {
         onToggleInfoLanguage={() =>
           setLogLanguage((prev) => (prev === "en" ? "ua" : "en"))
         }
-      />
+        />
 
       {/* Stage — flex-1 + min-h-0 щоб приймав залишок простору і міг стискатися */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        <Stage
-          file={file}
-          showInfo={showInfo}
-          logLanguage={logLanguage}
-          onFileDrop={(path) => window.api?.openFileByPath?.(path)}
-          onControlsReady={animationControls.actions.registerControls}
+        <div
+          className="flex-1 min-h-0 flex flex-col"
+          style={{
+            marginRight: stageRightInsetPx,
+            transition: "margin-right 200ms ease-out",
+          }}
+        >
+          <Stage
+            file={file}
+            showInfo={showInfo}
+            logLanguage={logLanguage}
+            onFileDrop={(path) => window.api?.openFileByPath?.(path)}
+            onControlsReady={animationControls.actions.registerControls}
+          />
+        </div>
+
+
+
+
+
+
+
+
+
+
+        <BottomControls
+          state={animationControls.state}
+          actions={animationControls.actions}
+          speedOptions={animationControls.constants.SPEED_OPTIONS}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => uiActions.toggleSidebar()}
         />
       </div>
 
-
-
-
-
-
-
-
-
-
-      <BottomControls
-        state={animationControls.state}
-        actions={animationControls.actions}
-        speedOptions={animationControls.constants.SPEED_OPTIONS}
-      />
+      <SidebarDrawer file={file} />
     </div>
   );
 }

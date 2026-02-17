@@ -1,17 +1,21 @@
 const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
 const fs = require("fs");
+const fsp = require("fs/promises");
 const path = require("path");
 
 console.log('[DEBUG] dialog available:', typeof dialog.showOpenDialog);
 
 /* ===== Constants ===== */
 
-const sizeFilePath = path.join(__dirname, 'window-size.json');
-const backgroundStatePath = path.join(__dirname, 'background-state.json');
+// Legacy (repo-local) paths (fallback only; new settings live in userData)
+const legacySizeFilePath = path.join(__dirname, 'window-size.json');
+const legacyBackgroundStatePath = path.join(__dirname, 'background-state.json');
 
 const FILE_FILTERS = [
   { name: 'Animations', extensions: ['json', 'lottie', 'webm'] },
 ];
+
+const SETTINGS_FILENAME = "settings.json";
 
 /* ===== Runtime state ===== */
 
@@ -40,17 +44,73 @@ function saveJSON(filePath, data) {
   }
 }
 
+function getSettingsPath() {
+  // app.getPath('userData') is available after app is ready
+  const userDataDir = app.getPath("userData");
+  return path.join(userDataDir, SETTINGS_FILENAME);
+}
+
+const DEFAULT_SETTINGS = {
+  windowBounds: { width: 900, height: 600 },
+  isFullScreen: false,
+  sidebarOpen: false,
+  background: { opacity: 1, theme: "dark" },
+};
+
+function deepMerge(base, patch) {
+  if (!patch || typeof patch !== "object") return base;
+  const out = Array.isArray(base) ? [...base] : { ...(base ?? {}) };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      out[k] = deepMerge(out[k], v);
+    } else if (v !== undefined) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function readSettingsSync() {
+  const settingsPath = getSettingsPath();
+  const existing = loadJSON(settingsPath, null);
+  if (existing) return deepMerge(DEFAULT_SETTINGS, existing);
+
+  // Fallback: migrate legacy files if present
+  const legacyBounds = loadJSON(legacySizeFilePath, null);
+  const legacyBackground = loadJSON(legacyBackgroundStatePath, { opacity: 1, theme: 'dark' });
+
+  const migrated = deepMerge(DEFAULT_SETTINGS, {
+    windowBounds: legacyBounds ? { width: legacyBounds.width, height: legacyBounds.height } : undefined,
+    background: { opacity: legacyBackground.opacity ?? 1, theme: legacyBackground.theme ?? "dark" },
+  });
+
+  // Best-effort write migration so future loads use userData
+  try {
+    saveJSON(settingsPath, migrated);
+  } catch {
+    // ignore
+  }
+
+  return migrated;
+}
+
+function writeSettingsSync(patch) {
+  const settingsPath = getSettingsPath();
+  const current = readSettingsSync();
+  const next = deepMerge(current, patch);
+  saveJSON(settingsPath, next);
+  return next;
+}
+
 /* ===== Create window ===== */
 
 function createWindow() {
-  const savedBounds = loadJSON(sizeFilePath, null);
-  const savedBackground = loadJSON(backgroundStatePath, { opacity: 1, theme: 'dark' });
-
-  backgroundOpacity = savedBackground.opacity ?? 1;
-  backgroundTheme = savedBackground.theme ?? 'dark';
+  const settings = readSettingsSync();
+  backgroundOpacity = settings.background.opacity ?? 1;
+  backgroundTheme = settings.background.theme ?? 'dark';
 
   mainWindow = new BrowserWindow({
-    ...(savedBounds ?? { width: 900, height: 600 }),
+    ...(settings.windowBounds ?? { width: 900, height: 600 }),
     frame: false,
     transparent: true,
     show: false,
@@ -58,6 +118,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
+
+  if (settings.isFullScreen) {
+    mainWindow.setFullScreen(true);
+  }
 
   const devURL = process.env.ELECTRON_RENDERER_URL;
 
@@ -77,14 +141,30 @@ function createWindow() {
       backgroundOpacity,
       backgroundTheme
     );
+    mainWindow.webContents.send('app:full-screen-changed', mainWindow.isFullScreen());
   });
 
   /* Persist size and background on close */
   mainWindow.on('close', () => {
-    if (windowState === 'normal') {
-      saveJSON(sizeFilePath, mainWindow.getBounds());
-    }
-    saveJSON(backgroundStatePath, { opacity: backgroundOpacity, theme: backgroundTheme });
+    if (!mainWindow) return;
+    const bounds = mainWindow.getBounds();
+    writeSettingsSync({
+      windowBounds: { width: bounds.width, height: bounds.height },
+      isFullScreen: mainWindow.isFullScreen(),
+      background: { opacity: backgroundOpacity, theme: backgroundTheme },
+    });
+  });
+
+  mainWindow.on("enter-full-screen", () => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send("app:full-screen-changed", true);
+    writeSettingsSync({ isFullScreen: true });
+  });
+
+  mainWindow.on("leave-full-screen", () => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send("app:full-screen-changed", false);
+    writeSettingsSync({ isFullScreen: false });
   });
 }
 
@@ -124,6 +204,11 @@ ipcMain.on('ui:window-close', () => {
   mainWindow?.close();
 });
 
+ipcMain.on("ui:toggle-fullscreen", () => {
+  if (!mainWindow) return;
+  mainWindow.setFullScreen(!mainWindow.isFullScreen());
+});
+
 /* ===== IPC: Background ===== */
 
 ipcMain.on('ui:toggle-background', () => {
@@ -131,7 +216,7 @@ ipcMain.on('ui:toggle-background', () => {
   else if (backgroundOpacity === 0.5) backgroundOpacity = 0;
   else backgroundOpacity = 1;
 
-  saveJSON(backgroundStatePath, { opacity: backgroundOpacity, theme: backgroundTheme });
+  writeSettingsSync({ background: { opacity: backgroundOpacity, theme: backgroundTheme } });
 
   mainWindow?.webContents.send(
     'app:background-changed',
@@ -142,7 +227,7 @@ ipcMain.on('ui:toggle-background', () => {
 
 ipcMain.on('ui:toggle-background-theme', () => {
   backgroundTheme = backgroundTheme === 'dark' ? 'light' : 'dark';
-  saveJSON(backgroundStatePath, { opacity: backgroundOpacity, theme: backgroundTheme });
+  writeSettingsSync({ background: { opacity: backgroundOpacity, theme: backgroundTheme } });
 
   mainWindow?.webContents.send(
     'app:background-changed',
@@ -229,4 +314,93 @@ ipcMain.on('ui:open-file', async () => {
 ipcMain.on('ui:open-file-by-path', (_event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) return;
   loadAndSendFile(filePath);
+});
+
+/* ===== IPC: Directory navigation (async, non-blocking) ===== */
+
+function isSupportedFileName(name) {
+  const ext = path.extname(name).toLowerCase();
+  return ext === ".webm" || ext === ".json";
+}
+
+ipcMain.handle("get-directory-files", async (_event, dirPath) => {
+  if (typeof dirPath !== "string" || !dirPath) return [];
+  try {
+    const dirents = await fsp.readdir(dirPath, { withFileTypes: true });
+    const entries = [];
+
+    for (const d of dirents) {
+      if (d.isDirectory()) {
+        entries.push({
+          kind: "dir",
+          name: d.name,
+          path: path.join(dirPath, d.name),
+        });
+        continue;
+      }
+
+      if (d.isFile() && isSupportedFileName(d.name)) {
+        const ext = path.extname(d.name).toLowerCase().replace(".", "");
+        entries.push({
+          kind: "file",
+          name: d.name,
+          extension: ext,
+          path: path.join(dirPath, d.name),
+        });
+      }
+    }
+
+    entries.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
+    return entries;
+  } catch (err) {
+    console.error("[DIR] Failed to read dir:", dirPath, err);
+    return [];
+  }
+});
+
+ipcMain.handle("get-parent-directory", async (_event, dirPath) => {
+  if (typeof dirPath !== "string" || !dirPath) return null;
+  try {
+    const resolved = path.resolve(dirPath);
+    const parent = path.dirname(resolved);
+    if (parent === resolved) return null;
+    return parent;
+  } catch {
+    return null;
+  }
+});
+
+/* ===== IPC: Settings (userData/settings.json) ===== */
+
+ipcMain.handle("read-settings", async () => {
+  return readSettingsSync();
+});
+
+ipcMain.handle("write-settings", async (_event, patch) => {
+  if (!patch || typeof patch !== "object") return readSettingsSync();
+  return writeSettingsSync(patch);
+});
+
+/* ===== IPC: open-file (invoke alias) ===== */
+
+ipcMain.handle("open-file", async (_event, filePath) => {
+  if (!mainWindow) return false;
+  if (typeof filePath === "string" && filePath) {
+    loadAndSendFile(filePath);
+    return true;
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open animation file',
+    properties: ['openFile'],
+    filters: FILE_FILTERS,
+  });
+
+  if (result.canceled || !result.filePaths?.length) return false;
+  loadAndSendFile(result.filePaths[0]);
+  return true;
 });
