@@ -16,6 +16,83 @@ function getDirectoryFromPath(filePath: string): string {
   return filePath.slice(0, lastSep);
 }
 
+// CreatorLinks / FollowCreator button (isolated component)
+function CreatorLinks() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const LINKEDIN_URL = "https://www.linkedin.com/in/dmytromartynenko/";
+  const PATREON_URL = "https://www.patreon.com/YOUR_PAGE";
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
+  const handleSelect = (target: "linkedin" | "patreon") => {
+    const url = target === "linkedin" ? LINKEDIN_URL : PATREON_URL;
+    window.api?.openExternalUrl?.(url);
+    setIsMenuOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="w-full py-2 rounded bg-neutral-800 hover:bg-neutral-700 text-sm text-neutral-100 border border-neutral-700 flex items-center justify-center gap-2 transition-colors"
+        aria-label="Follow creator links"
+        data-name="CreatorLinks"
+        title="Follow the creator"
+        onClick={() => setIsMenuOpen((v) => !v)}
+      >
+        <span aria-hidden="true" className="text-xs opacity-80">
+          ★
+        </span>
+        <span>Support creator</span>
+      </button>
+
+      {isMenuOpen && (
+        <div
+          ref={menuRef}
+          className="absolute bottom-full right-0 mb-2 bg-neutral-800 rounded shadow-lg border border-neutral-700 py-1 min-w-[160px] z-50"
+        >
+          <button
+            type="button"
+            className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-700 transition-colors flex items-center gap-2"
+            onClick={() => handleSelect("linkedin")}
+          >
+            <span className="w-4 text-xs opacity-80" aria-hidden="true">
+              in
+            </span>
+            <span>LinkedIn</span>
+          </button>
+          <button
+            type="button"
+            className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-700 transition-colors flex items-center gap-2"
+            onClick={() => handleSelect("patreon")}
+          >
+            <span className="w-4 text-xs opacity-80" aria-hidden="true">
+              P
+            </span>
+            <span>Patreon</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SidebarDrawer({ file }: { file: LoadedFile | null }) {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const close = useUiStore((s) => s.actions.setSidebarOpen);
@@ -157,7 +234,7 @@ export default function SidebarDrawer({ file }: { file: LoadedFile | null }) {
                         "w-full px-3 py-2 text-left text-sm",
                         "hover:bg-neutral-800 transition-colors",
                         "flex items-center gap-2",
-                        isActive ? "bg-emerald-600/20 text-emerald-200" : "text-neutral-200",
+                        isActive ? "bg-emerald-600/30 border-l-2 border-emerald-500/30 text-emerald-200" : "text-neutral-200",
                       ].join(" ")}
                       onClick={() => openEntry(e)}
                       title={e.path}
@@ -184,15 +261,9 @@ export default function SidebarDrawer({ file }: { file: LoadedFile | null }) {
           )}
         </div>
 
-        {/* Donate (inactive) */}
+        {/* Creator / Donate links */}
         <div className="p-3 border-t border-neutral-800">
-          <button
-            className="w-full py-2 rounded bg-amber-600/40 text-amber-100 border border-amber-500/40 cursor-not-allowed opacity-70"
-            disabled
-            title="Donate (coming soon)"
-          >
-            Donate
-          </button>
+          <CreatorLinks />
         </div>
       </aside>
     </div>

@@ -1,4 +1,5 @@
 import { LoadedFile } from "../players/PlayerContract";
+import iconImage from "../images/icon.png";
 
 type LogLanguage = "en" | "ua";
 
@@ -47,11 +48,15 @@ export default function TopBar({
       {/* ===== Ліва частина ===== */}
       <div className="flex items-center gap-3 text-sm app-region-no-drag">
         <button
-          className="hover:text-white"
+          className="hover:opacity-80 transition-opacity"
           onClick={() => window.api.openFile()}
           title="Open file"
         >
-          📂
+          <img 
+            src={iconImage} 
+            alt="Open file" 
+            className="w-5 h-5"
+          />
         </button>
 
         <button
@@ -69,7 +74,7 @@ export default function TopBar({
         <button
           className={`px-2 py-1 text-xs rounded transition-colors ${
             showInfo
-              ? "bg-emerald-600 text-white"
+              ? "bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-200"
               : "bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
           }`}
           onClick={onToggleInfo}

@@ -1,9 +1,7 @@
-const { app, BrowserWindow, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, shell } = require('electron');
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
-
-console.log('[DEBUG] dialog available:', typeof dialog.showOpenDialog);
 
 /* ===== Constants ===== */
 
@@ -111,6 +109,8 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     ...(settings.windowBounds ?? { width: 900, height: 600 }),
+    // Use Jessie Player icon for taskbar / window
+    icon: path.join(__dirname, '../src/images/icon.png'),
     frame: false,
     transparent: true,
     show: false,
@@ -147,10 +147,18 @@ function createWindow() {
   /* Persist size and background on close */
   mainWindow.on('close', () => {
     if (!mainWindow) return;
-    const bounds = mainWindow.getBounds();
+    // If we close while in fullscreen, getBounds() is the monitor size.
+    // Persist the *normal* window bounds instead so next launch restores
+    // the pre-fullscreen size in windowed mode.
+    const bounds = mainWindow.isFullScreen()
+      ? mainWindow.getNormalBounds()
+      : (windowState === "maximized" && lastBounds
+          ? lastBounds
+          : mainWindow.getBounds());
     writeSettingsSync({
       windowBounds: { width: bounds.width, height: bounds.height },
-      isFullScreen: mainWindow.isFullScreen(),
+      // Always start in windowed mode on next launch.
+      isFullScreen: false,
       background: { opacity: backgroundOpacity, theme: backgroundTheme },
     });
   });
@@ -320,7 +328,7 @@ ipcMain.on('ui:open-file-by-path', (_event, filePath) => {
 
 function isSupportedFileName(name) {
   const ext = path.extname(name).toLowerCase();
-  return ext === ".webm" || ext === ".json";
+  return ext === ".webm" || ext === ".json" || ext === ".lottie";
 }
 
 ipcMain.handle("get-directory-files", async (_event, dirPath) => {
@@ -403,4 +411,11 @@ ipcMain.handle("open-file", async (_event, filePath) => {
   if (result.canceled || !result.filePaths?.length) return false;
   loadAndSendFile(result.filePaths[0]);
   return true;
+});
+
+/* ===== IPC: open URL in system default browser ===== */
+
+ipcMain.handle("open-external-url", async (_event, url) => {
+  if (typeof url !== "string" || !url.startsWith("http")) return;
+  shell.openExternal(url);
 });

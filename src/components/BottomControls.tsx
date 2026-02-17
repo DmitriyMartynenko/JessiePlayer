@@ -108,14 +108,19 @@ export default function BottomControls({
       {/* Play/Pause Button */}
       <button
         onClick={actions.togglePlayPause}
-        className="w-8 h-8 rounded-full bg-neutral-700 hover:bg-neutral-600 flex items-center justify-center transition-colors"
+        className="w-8 h-8 rounded-full bg-neutral-700 hover:bg-neutral-600 flex items-center justify-center transition-colors text-white"
         title={state.isPlaying ? "Pause" : "Play"}
         disabled={!state.info}
       >
         {state.isPlaying ? (
-          <span className="text-xs">⏸</span>
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" className="shrink-0" aria-hidden>
+            <rect x="4" y="3" width="3" height="10" rx="0.5" />
+            <rect x="9" y="3" width="3" height="10" rx="0.5" />
+          </svg>
         ) : (
-          <span className="text-xs ml-0.5">▶</span>
+          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" className="shrink-0 ml-0.5" aria-hidden>
+            <path d="M5 3v10l8-5-8-5z" />
+          </svg>
         )}
       </button>
 
@@ -188,7 +193,7 @@ export default function BottomControls({
         className={[
           "w-8 h-8 flex items-center justify-center rounded transition-colors",
           sidebarOpen
-            ? "bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/30"
+            ? "bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-200"
             : "bg-neutral-800 hover:bg-neutral-700",
         ].join(" ")}
         title="Menu"

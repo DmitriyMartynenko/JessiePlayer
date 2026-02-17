@@ -98,32 +98,62 @@ export function JsonPlayer({
     }
 
     // ─────────────────────────────────────────────
+    // Validate Lottie animation structure (avoid crash on non-animation JSON)
+    // ─────────────────────────────────────────────
+    const hasLayers = Array.isArray(animationData.layers);
+    const hasSize =
+      typeof animationData.w === "number" && typeof animationData.h === "number";
+    if (!hasLayers || !hasSize) {
+      onStatus?.({
+        type: "error",
+        error: {
+          code: "NOT_LOTTIE_ANIMATION",
+          message: "This file is not a Lottie animation. It must contain animation data (e.g. layers, width and height).",
+          details: hasLayers
+            ? "Missing width (w) or height (h)."
+            : "Missing layers array. Only Lottie/Bodymovin JSON animations are supported.",
+        },
+      });
+      return;
+    }
+
+    // ─────────────────────────────────────────────
     // Зберігаємо розміри анімації для FIT
     // ─────────────────────────────────────────────
-    if (typeof animationData.w === "number" && typeof animationData.h === "number") {
-      sizeRef.current = { w: animationData.w, h: animationData.h };
-    } else {
-      // Lottie JSON завжди має w/h, але перестрахуємось
-      sizeRef.current = { w: 1000, h: 1000 };
-    }
+    sizeRef.current = { w: animationData.w, h: animationData.h };
 
     // Store animation data for controls
     animationDataRef.current = animationData;
 
     // ─────────────────────────────────────────────
-    // Lottie init
+    // Lottie init (wrapped in try/catch so invalid data never crashes the app)
     // ─────────────────────────────────────────────
 
-    animationRef.current = lottie.loadAnimation({
-      container: containerRef.current,
-      renderer: "svg",
-      loop: true,
-      autoplay: true,
-      animationData,
-      rendererSettings: {
-        preserveAspectRatio: "xMidYMid meet",
-      },
-    });
+    let animInstance: any;
+    try {
+      animInstance = lottie.loadAnimation({
+        container: containerRef.current,
+        renderer: "svg",
+        loop: true,
+        autoplay: true,
+        animationData,
+        rendererSettings: {
+          preserveAspectRatio: "xMidYMid meet",
+        },
+      });
+    } catch (err) {
+      onStatus?.({
+        type: "error",
+        error: {
+          code: "LOTTIE_LOAD_FAILED",
+          message: "Failed to load animation. The file may not be a valid Lottie animation.",
+          details: err instanceof Error ? err.message : String(err),
+        },
+      });
+      return;
+    }
+
+    animationRef.current = animInstance;
 
     // ─────────────────────────────────────────────
     // Animation Controls Setup
@@ -202,15 +232,14 @@ export function JsonPlayer({
     };
 
     // Set up frame update listener
-    animationRef.current.addEventListener("enterFrame", () => {
+    animInstance.addEventListener("enterFrame", () => {
       if (animationRef.current && frameChangeCallbackRef.current) {
         const frame = Math.round(animationRef.current.currentFrame);
         frameChangeCallbackRef.current(frame);
       }
     });
 
-    // Виправлена помилка — використовуємо animationRef.current
-    animationRef.current.addEventListener("DOMLoaded", () => {
+    animInstance.addEventListener("DOMLoaded", () => {
       const svg = containerRef.current?.querySelector("svg");
 
       if (svg) {

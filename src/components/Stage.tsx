@@ -4,6 +4,7 @@ import { PlayerWarnings } from "../components/PlayerWarnings";
 import StageContextMenu from "../components/StageContextMenu";
 import { AnimationInfoPanel } from "./ui/AnimationInfoPanel";
 import { useStageLogic } from "./StageLogic";
+import iconImage from "../images/icon.png";
 
 // ─────────────────────────────────────────────
 // STAGE = UI COMPONENT (Logic extracted to StageLogic)
@@ -34,15 +35,27 @@ export function Stage({ file, onFileDrop, showInfo, logLanguage, onControlsReady
   if (!file || !state.PlayerComponent) {
     return (
       <div
-        className={`flex h-full w-full flex-col items-center justify-center gap-2 text-center text-[1.20rem] text-neutral-500 select-none transition-colors ${
+        className={`flex h-full w-full flex-col items-center justify-center gap-4 text-center text-[1.20rem] text-neutral-500 select-none transition-colors cursor-pointer ${
           state.isDragOver ? "bg-slate-700/30 ring-2 ring-inset ring-slate-500 rounded" : ""
         }`}
         onDragOver={actions.handleDragOver}
         onDragLeave={actions.handleDragLeave}
         onDrop={actions.handleDrop}
+        onClick={() => {
+          if (window.api?.openFile) {
+            window.api.openFile();
+          }
+        }}
       >
-        <span>🎬 Drag your <strong>json</strong>, <strong>lottie</strong>, or <strong>webm</strong> file here</span>
-        <span>📁 Or click the folder icon above to start</span>
+        <img 
+          src={iconImage} 
+          alt="Jessie Player" 
+          className="w-24 h-24 opacity-80 hover:opacity-100 transition-opacity"
+        />
+        <div className="flex flex-col gap-2">
+          <span>🎬 Drag your <strong>json</strong>, <strong>lottie</strong>, or <strong>webm</strong> file here</span>
+          <span className="text-base">Or click anywhere to select a file</span>
+        </div>
       </div>
     );
   }

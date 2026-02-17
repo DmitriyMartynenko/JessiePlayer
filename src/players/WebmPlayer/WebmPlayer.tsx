@@ -25,8 +25,8 @@ export function WebmPlayer({
   const [videoSize, setVideoSize] = useState<{ w: number; h: number } | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const frameRateRef = useRef<number>(30); // Default 30 fps for WebM
-  const frameChangeCallbackRef = useRef<((frame: number) => void) | undefined>();
-  const playStateChangeCallbackRef = useRef<((isPlaying: boolean) => void) | undefined>();
+  const frameChangeCallbackRef = useRef<((frame: number) => void) | undefined>(undefined);
+  const playStateChangeCallbackRef = useRef<((isPlaying: boolean) => void) | undefined>(undefined);
 
   // ─────────────────────────────────────────────
   // INIT / LOAD (blob URL from buffer, cleanup on unmount or file change)
@@ -275,7 +275,7 @@ export function WebmPlayer({
         <video
           ref={videoRef}
           src={videoSrc ?? undefined}
-          autoPlay={false}
+          autoPlay
           loop
           muted
           playsInline

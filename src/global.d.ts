@@ -32,6 +32,7 @@ declare global {
       readSettings: () => Promise<AppSettings>;
       writeSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
       openFileIPC?: (filePath?: string) => Promise<boolean>;
+      openExternalUrl: (url: string) => Promise<void>;
       window: {
         minimize: () => void;
         maximize: () => void;
@@ -39,6 +40,11 @@ declare global {
       };
     };
   }
+}
+
+declare module "*.png" {
+  const value: string;
+  export default value;
 }
 
 export {};

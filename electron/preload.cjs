@@ -89,6 +89,10 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke("open-file", filePath);
   },
 
+  openExternalUrl: (url) => {
+    return ipcRenderer.invoke("open-external-url", url);
+  },
+
   /* ===== Subscriptions (поки заглушки) ===== */
 
   onStageChanged: (callback) => {
