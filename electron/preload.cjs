@@ -93,40 +93,15 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke("open-external-url", url);
   },
 
-  /* ===== Subscriptions (поки заглушки) ===== */
-
-  onStageChanged: (callback) => {
-    ipcRenderer.on('app:file-changed', (_event, fileInfo) => {
-  if (fileInfo?.type === 'lottie') {
-    console.log(
-      '[LOTTIE][PRELOAD] images keys:',
-      Object.keys(fileInfo.images || {})
-    );
-  }
-
-  callback(fileInfo);
-});
-
-  },
-
   onFileChanged: (callback) => {
     ipcRenderer.on('app:file-changed', (_event, fileInfo) => {
-      console.log('[preload] File changed:', fileInfo);
       callback(fileInfo);
     });
   },
 
-  /* ===== Сигнали для максимізації ===== */
-
-  onWindowMaximized: (callback) => {
-    ipcRenderer.on('set-maximized', (_event, maximized) => {
-      console.log('[preload] Window maximized status received:', maximized);
-      callback(maximized);
-    });
-  },
   onWindowStateChanged: (callback) => {
-  ipcRenderer.on('app:window-state-changed', (_event, state) => {
-    callback(state);
+    ipcRenderer.on('app:window-state-changed', (_event, state) => {
+      callback(state);
     });
   },
 

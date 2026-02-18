@@ -47,9 +47,9 @@ export function Stage({ file, onFileDrop, showInfo, logLanguage, onControlsReady
           }
         }}
       >
-        <img 
-          src={iconImage} 
-          alt="Jessie Player" 
+        <img
+          src={iconImage}
+          alt="Jessie Player"
           className="w-24 h-24 opacity-80 hover:opacity-100 transition-opacity"
         />
         <div className="flex flex-col gap-2">

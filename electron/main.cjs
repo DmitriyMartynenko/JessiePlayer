@@ -18,6 +18,8 @@ const SETTINGS_FILENAME = "settings.json";
 /* ===== Runtime state ===== */
 
 let mainWindow = null;
+/** @type {string | null} Pending file path from argv or open-file (macOS) before window is ready */
+let pendingOpenFilePath = null;
 let windowState = 'normal';
 let lastBounds = null;
 let backgroundOpacity = 1;
@@ -107,10 +109,10 @@ function createWindow() {
   backgroundOpacity = settings.background.opacity ?? 1;
   backgroundTheme = settings.background.theme ?? 'dark';
 
+  const iconPath = path.join(__dirname, '../src/images/icon.png');
   mainWindow = new BrowserWindow({
     ...(settings.windowBounds ?? { width: 900, height: 600 }),
-    // Use Jessie Player icon for taskbar / window
-    icon: path.join(__dirname, '../src/images/icon.png'),
+    ...(fs.existsSync(iconPath) && { icon: iconPath }),
     frame: false,
     transparent: true,
     show: false,
@@ -142,6 +144,10 @@ function createWindow() {
       backgroundTheme
     );
     mainWindow.webContents.send('app:full-screen-changed', mainWindow.isFullScreen());
+    if (pendingOpenFilePath) {
+      loadAndSendFile(pendingOpenFilePath);
+      pendingOpenFilePath = null;
+    }
   });
 
   /* Persist size and background on close */
@@ -176,9 +182,40 @@ function createWindow() {
   });
 }
 
-/* ===== App lifecycle ===== */
+/* ===== Single instance (Open with / file association) ===== */
 
-app.whenReady().then(createWindow);
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv, cwd) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      const filePath = getFilePathFromArgv(argv, cwd);
+      if (filePath) loadAndSendFile(filePath);
+    } else {
+      const filePath = getFilePathFromArgv(argv, cwd);
+      if (filePath) pendingOpenFilePath = filePath;
+    }
+  });
+
+  /* macOS: open-file when user opens file from Finder (or double-clicks associated file) */
+  app.on('open-file', (event, pathToOpen) => {
+    event.preventDefault();
+    if (mainWindow) {
+      loadAndSendFile(pathToOpen);
+    } else {
+      pendingOpenFilePath = pathToOpen;
+    }
+  });
+
+  app.whenReady().then(() => {
+    const pathFromArgv = getFilePathFromArgv(process.argv, process.cwd());
+    if (pathFromArgv) pendingOpenFilePath = pathFromArgv;
+    createWindow();
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -247,6 +284,31 @@ ipcMain.on('ui:toggle-background-theme', () => {
 /* ===== IPC: Open file ===== */
 
 const VALID_EXTENSIONS = ['json', 'lottie', 'webm'];
+
+/**
+ * From process.argv (or second-instance argv), find the first path that is a supported file.
+ * Works for "Open with" on Windows and similar flows.
+ * @param {string[]} argv - process.argv or second-instance argv
+ * @param {string} [cwd] - Working directory for relative paths
+ * @returns {string | null}
+ */
+function getFilePathFromArgv(argv, cwd) {
+  if (!Array.isArray(argv) || argv.length === 0) return null;
+  const baseDir = cwd || process.cwd();
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (typeof arg !== 'string' || arg.startsWith('-')) continue;
+    const ext = path.extname(arg).toLowerCase().replace('.', '');
+    if (!VALID_EXTENSIONS.includes(ext)) continue;
+    const resolved = path.isAbsolute(arg) ? arg : path.resolve(baseDir, arg);
+    try {
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
 
 function loadAndSendFile(filePath) {
   if (!mainWindow) return;

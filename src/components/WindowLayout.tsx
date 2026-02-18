@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import TopBar from "./TopBar";
 import { Stage } from "./Stage";
@@ -21,17 +21,8 @@ export default function WindowLayout() {
     "normal"
   );
 
-	
   const [backgroundOpacity, setBackgroundOpacity] = useState<1 | 0.5 | 0>(1);
   const [backgroundTheme, setBackgroundTheme] = useState<"dark" | "light">("dark");
-  
-
-
-
-
-
-  
-
 
   // ===== Current file (SINGLE SOURCE OF TRUTH) =====
   const [file, setFile] = useState<LoadedFile | null>(null);
@@ -48,71 +39,46 @@ export default function WindowLayout() {
   // Reset controls when file changes
   useEffect(() => {
     animationControls.actions.registerControls(null);
-  }, [file]);
+  }, [file, animationControls.actions.registerControls]);
 
   // ─────────────────────────────────────────────
   // Global Spacebar Hotkey (Play/Pause)
   // ─────────────────────────────────────────────
 
+  const togglePlayPauseRef = useRef(animationControls.actions.togglePlayPause);
+  togglePlayPauseRef.current = animationControls.actions.togglePlayPause;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle Spacebar
       if (e.key !== " " && e.code !== "Space") return;
 
-      // Don't interfere if user is typing in an input field
       const activeElement = document.activeElement;
       const isInputFocused =
         activeElement &&
         (activeElement.tagName === "INPUT" ||
           activeElement.tagName === "TEXTAREA" ||
-          activeElement.isContentEditable);
+          (activeElement as HTMLElement).isContentEditable);
 
       if (isInputFocused) return;
-
-      // Only work if we have a file loaded and controls available
       if (!file || !animationControls.state.info) return;
 
-      // Prevent default scrolling behavior
       e.preventDefault();
-
-      // Toggle play/pause
-      animationControls.actions.togglePlayPause();
+      togglePlayPauseRef.current();
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [file, animationControls.state.info, animationControls.actions]);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [file, animationControls.state.info]);
 
   useEffect(() => {
-    if (!window.api) {
-      console.error("[UI] window.api is NOT available");
-      return;
-    }
+    if (!window.api) return;
 
-    console.log("[UI] window.api available");
-
-    // ===== Window state changes =====
-    window.api.onWindowStateChanged((state) => {
-      console.log("[UI] window state changed:", state);
-      setWindowState(state);
-    });
-
-    // ===== File selected =====
-    window.api.onFileChanged((fileInfo) => {
-      console.log("[UI] app:file-changed received:", fileInfo);
-      setFile(fileInfo);
-    });
-
-
-    // ===== Background opacity & theme =====
+    window.api.onWindowStateChanged(setWindowState);
+    window.api.onFileChanged(setFile);
     window.api.onBackgroundChanged((opacity: 1 | 0.5 | 0, theme?: "dark" | "light") => {
-      console.log("[UI] background changed:", opacity, theme);
       setBackgroundOpacity(opacity);
       setBackgroundTheme(theme ?? "dark");
     });
-
   }, []);
 
   // ===== Restore settings (sidebar + fullscreen) =====

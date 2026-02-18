@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { PlayerProps } from "../PlayerContract";
 
 export function FallbackPlayer({ file, onStatus }: PlayerProps) {
-  // Fallback завжди "готовий"
-  onStatus?.({ type: "ready" });
+  useEffect(() => {
+    onStatus?.({ type: "ready" });
+  }, [file, onStatus]);
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-sm text-neutral-400">
