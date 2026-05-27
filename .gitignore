@@ -40,3 +40,22 @@ Thumbs.db
 # Env files
 .env
 .env.*
+
+# Claude Code local settings (personal, machine-specific)
+.claude/
+
+# Personal / social media drafts
+sotialnet/
+
+# Personal notes and chat exports
+рідм*.txt
+
+# UI mockup (internal design scratch)
+ui-mockup/
+
+# Internal dev session notes (not a proper changelog)
+CHANGELOG_UPDATE.md
+HISTORY.md
+
+# desktop.ini (Windows folder metadata)
+desktop.ini

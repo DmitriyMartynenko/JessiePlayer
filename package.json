@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 electron .\"",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && cross-env ELECTRON_RENDERER_URL=http://localhost:5174 electron .\"",
     "electron:build": "npm run build && electron .",
     "electron:run": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
@@ -20,12 +20,16 @@
     "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
+    "gifenc": "^1.0.3",
     "image-size": "^2.0.2",
     "jszip": "^3.10.1",
     "lottie-web": "^5.13.0",
+    "mp4-muxer": "^5.2.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^4.1.18",
+    "webm-muxer": "^5.1.4",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -44,6 +48,11 @@
   "build": {
     "appId": "com.jessieplayer.app",
     "productName": "Jessie Player",
+    "publish": {
+      "provider": "github",
+      "owner": "DmitriyMartynenko",
+      "repo": "JessiePlayer"
+    },
     "directories": {
       "output": "release"
     },
@@ -53,12 +62,31 @@
       "src/images/**/*"
     ],
     "fileAssociations": [
-      { "ext": "json", "name": "JSON Animation", "description": "JSON / Lottie animation" },
-      { "ext": "lottie", "name": "Lottie", "description": "Lottie animation" },
-      { "ext": "webm", "name": "WebM Video", "description": "WebM video" }
+      {
+        "ext": "json",
+        "name": "JSON Animation",
+        "description": "JSON / Lottie animation"
+      },
+      {
+        "ext": "lottie",
+        "name": "Lottie",
+        "description": "Lottie animation"
+      },
+      {
+        "ext": "webm",
+        "name": "WebM Video",
+        "description": "WebM video"
+      }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "src/images/icon.ico"
     },
     "nsis": {
@@ -70,14 +98,24 @@
       "createStartMenuShortcut": true
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "src/images/icon.png",
       "category": "public.app-category.video"
     },
     "dmg": {
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   }

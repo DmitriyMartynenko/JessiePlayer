@@ -34,7 +34,7 @@ export default function StageContextMenu({
         <span className="w-4">
           {scaleMode === "fit" ? "✓" : ""}
         </span>
-        Fit to Window
+        View
       </div>
 
       <div

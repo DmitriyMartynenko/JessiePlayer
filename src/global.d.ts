@@ -9,7 +9,7 @@ declare global {
     windowBounds?: { width: number; height: number };
     isFullScreen?: boolean;
     sidebarOpen?: boolean;
-    background?: { opacity: 1 | 0.5 | 0; theme: "dark" | "light" };
+    background?: { opacity: number; color: string };
   };
 
   interface Window {
@@ -19,10 +19,9 @@ declare global {
       ) => void;
       onFileChanged: (callback: (fileInfo: LoadedFile) => void) => void;
       onBackgroundChanged: (
-        callback: (opacity: 1 | 0.5 | 0, theme?: "dark" | "light") => void
+        callback: (opacity: number, color: string) => void
       ) => void;
-      toggleBackground: () => void;
-      toggleBackgroundTheme: () => void;
+      setBackground: (color: string, opacity: number) => void;
       openFile: () => void;
       openFileByPath: (filePath: string) => void;
       toggleFullScreen: () => void;
@@ -33,6 +32,16 @@ declare global {
       writeSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
       openFileIPC?: (filePath?: string) => Promise<boolean>;
       openExternalUrl: (url: string) => Promise<void>;
+      openImageFile: () => Promise<{ dataUrl: string } | null>;
+      getRecentFiles: () => Promise<Array<{ path: string; name: string; extension: string }>>;
+      readImageFiles: (dirPath: string) => Promise<Record<string, string>>;
+      saveMp4: (buffer: ArrayBuffer, defaultName?: string) => Promise<string | null>;
+      revealInExplorer: (filePath: string) => Promise<void>;
+      onUpdateAvailable: (callback: (version: string) => void) => void;
+      onUpdateDownloaded: (callback: (version: string) => void) => void;
+      onUpdateProgress: (callback: (percent: number) => void) => void;
+      installUpdate: () => void;
+      checkForUpdates: () => Promise<string | null>;
       window: {
         minimize: () => void;
         maximize: () => void;

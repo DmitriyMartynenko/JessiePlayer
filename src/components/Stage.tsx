@@ -3,8 +3,10 @@ import { LoadedFile, AnimationControls } from "../players/PlayerContract";
 import { PlayerWarnings } from "../components/PlayerWarnings";
 import StageContextMenu from "../components/StageContextMenu";
 import { AnimationInfoPanel } from "./ui/AnimationInfoPanel";
+import { EmptyState } from "./ui/EmptyState";
 import { useStageLogic } from "./StageLogic";
-import iconImage from "../images/icon.png";
+import { ComposeStage } from "./ComposeStage";
+import { useUiStore } from "../store/uiStore";
 
 // ─────────────────────────────────────────────
 // STAGE = UI COMPONENT (Logic extracted to StageLogic)
@@ -21,43 +23,34 @@ type Props = {
 };
 
 export function Stage({ file, onFileDrop, showInfo, logLanguage, onControlsReady }: Props) {
-  // Use extracted logic hook
+  const scaleMode = useUiStore((s) => s.scaleMode);
   const { state, actions } = useStageLogic(file, onFileDrop);
 
-  // Local refs for mouse drag handling (UI-specific)
+  // Refs must be declared before any conditional returns (Rules of Hooks)
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
+
+  // ── Compose mode: delegate entirely to ComposeStage ──
+  if (scaleMode === "compose") {
+    const animDimensions = state.diagnostics
+      ? { w: state.diagnostics.width, h: state.diagnostics.height }
+      : null;
+    return (
+      <ComposeStage
+        file={file}
+        animDimensions={animDimensions}
+        onStatus={actions.handleStatus}
+        onControlsReady={onControlsReady}
+      />
+    );
+  }
 
   // ─────────────────────────────────────────────
   // EMPTY STATE
   // ─────────────────────────────────────────────
 
   if (!file || !state.PlayerComponent) {
-    return (
-      <div
-        className={`flex h-full w-full flex-col items-center justify-center gap-4 text-center text-[1.20rem] text-neutral-500 select-none transition-colors cursor-pointer ${
-          state.isDragOver ? "bg-slate-700/30 ring-2 ring-inset ring-slate-500 rounded" : ""
-        }`}
-        onDragOver={actions.handleDragOver}
-        onDragLeave={actions.handleDragLeave}
-        onDrop={actions.handleDrop}
-        onClick={() => {
-          if (window.api?.openFile) {
-            window.api.openFile();
-          }
-        }}
-      >
-        <img
-          src={iconImage}
-          alt="Jessie Player"
-          className="w-24 h-24 opacity-80 hover:opacity-100 transition-opacity"
-        />
-        <div className="flex flex-col gap-2">
-          <span>🎬 Drag your <strong>json</strong>, <strong>lottie</strong>, or <strong>webm</strong> file here</span>
-          <span className="text-base">Or click anywhere to select a file</span>
-        </div>
-      </div>
-    );
+    return <EmptyState isDragOver={state.isDragOver} onDragOver={actions.handleDragOver} onDragLeave={actions.handleDragLeave} onDrop={actions.handleDrop} />;
   }
 
   // ─────────────────────────────────────────────

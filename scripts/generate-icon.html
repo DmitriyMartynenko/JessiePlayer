@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jessie Player — Icon Generator</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #111; color: #ccc; padding: 32px; }
+    h1 { color: #e2e8f0; font-size: 1.25rem; margin-bottom: 8px; }
+    p  { color: #666; font-size: .85rem; margin-bottom: 24px; line-height: 1.6; }
+    .grid { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 32px; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px; text-align: center; }
+    .card span { display: block; margin-top: 8px; font-size: .75rem; color: #555; font-mono; }
+    .card button {
+      margin-top: 10px; padding: 6px 14px; font-size: .75rem;
+      background: #1e3a6e; border: 1px solid #2563eb; color: #93c5fd;
+      border-radius: 6px; cursor: pointer; transition: background .15s;
+    }
+    .card button:hover { background: #2d4a8e; }
+    .download-all {
+      padding: 10px 24px; font-size: .875rem;
+      background: #2d4a3e; border: 1px solid #34d399; color: #6ee7b7;
+      border-radius: 8px; cursor: pointer; transition: background .15s;
+    }
+    .download-all:hover { background: #3d5a4e; }
+    .note { margin-top: 32px; padding: 16px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; font-size: .8rem; line-height: 1.8; color: #666; }
+    .note strong { color: #94a3b8; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<h1>Jessie Player — Icon Generator</h1>
+<p>
+  Рендерить JP-логотип у всіх потрібних розмірах.<br>
+  Скачай PNG → заміни <code>src/images/icon.png</code> (256px)<br>
+  Потім конвертуй 256px PNG → ICO на <strong>icoconvert.com</strong> → заміни <code>src/images/icon.ico</code>
+</p>
+
+<div class="grid" id="grid"></div>
+
+<button class="download-all" onclick="downloadAll()">⬇ Download all PNG sizes</button>
+
+<div class="note">
+  <strong>Після заміни файлів:</strong><br>
+  1. Зупини застосунок<br>
+  2. Заміни <code>src/images/icon.png</code> файлом 256×256 завантаженим вище<br>
+  3. Відкрий <a href="https://icoconvert.com" target="_blank" style="color:#4f8ef7">icoconvert.com</a> → завантаж 256px PNG → Export as ICO (обери всі розміри: 16, 32, 48, 64, 128, 256)<br>
+  4. Заміни <code>src/images/icon.ico</code><br>
+  5. Запусти <code>npm run electron:dev</code> — іконка оновиться в заголовку вікна<br>
+  6. Для taskbar: <code>npm run dist:win</code> — нова іконка буде в exe і на taskbar
+</div>
+
+<script>
+// ── JP Logo drawing function ──────────────────────────────
+function drawJP(canvas, size) {
+  const ctx = canvas.getContext('2d');
+  canvas.width  = size;
+  canvas.height = size;
+
+  const r  = size * 0.22;   // corner radius
+  const pad = size * 0.04;  // padding
+
+  // Background — rounded rect
+  ctx.beginPath();
+  roundRect(ctx, pad, pad, size - pad * 2, size - pad * 2, r);
+
+  // Gradient background
+  const grad = ctx.createLinearGradient(pad, pad, size - pad, size - pad);
+  grad.addColorStop(0,   '#1e2433');
+  grad.addColorStop(0.5, '#1a1f2e');
+  grad.addColorStop(1,   '#141820');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Subtle border
+  ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+  ctx.lineWidth   = Math.max(1, size * 0.02);
+  ctx.stroke();
+
+  // "JP" text
+  const fontSize   = size * 0.38;
+  const letterSpacing = size * 0.025;
+  ctx.font         = `700 ${fontSize}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
+  ctx.fillStyle    = '#94a3b8';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Slightly adjust vertical center for visual balance
+  const cy = size * 0.525;
+  ctx.fillText('JP', size / 2, cy);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ── Render all sizes ──────────────────────────────────────
+const SIZES = [16, 32, 48, 64, 128, 256, 512];
+const grid  = document.getElementById('grid');
+
+SIZES.forEach(size => {
+  const card   = document.createElement('div');
+  card.className = 'card';
+
+  const canvas = document.createElement('canvas');
+  drawJP(canvas, size);
+
+  // Show preview at min 64px, max 128px
+  const display = Math.max(64, Math.min(128, size));
+  canvas.style.width  = display + 'px';
+  canvas.style.height = display + 'px';
+  canvas.style.imageRendering = size <= 32 ? 'pixelated' : 'auto';
+
+  const label  = document.createElement('span');
+  label.textContent = `${size} × ${size} px`;
+
+  const btn    = document.createElement('button');
+  btn.textContent = '⬇ Download';
+  btn.onclick  = () => download(canvas, size);
+
+  card.appendChild(canvas);
+  card.appendChild(label);
+  card.appendChild(btn);
+  grid.appendChild(card);
+});
+
+function download(canvas, size) {
+  const link    = document.createElement('a');
+  link.download = `icon-${size}.png`;
+  link.href     = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function downloadAll() {
+  const cards = grid.querySelectorAll('canvas');
+  cards.forEach((canvas, i) => {
+    setTimeout(() => download(canvas, SIZES[i]), i * 100);
+  });
+}
+</script>
+</body>
+</html>

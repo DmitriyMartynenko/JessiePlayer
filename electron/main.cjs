@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, dialog, shell } = require('electron
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
+const { autoUpdater } = require("electron-updater");
 
 /* ===== Constants ===== */
 
@@ -10,7 +11,7 @@ const legacySizeFilePath = path.join(__dirname, 'window-size.json');
 const legacyBackgroundStatePath = path.join(__dirname, 'background-state.json');
 
 const FILE_FILTERS = [
-  { name: 'Animations', extensions: ['json', 'lottie', 'webm'] },
+  { name: 'Animations', extensions: ['json', 'lottie', 'webm', 'gif'] },
 ];
 
 const SETTINGS_FILENAME = "settings.json";
@@ -23,7 +24,7 @@ let pendingOpenFilePath = null;
 let windowState = 'normal';
 let lastBounds = null;
 let backgroundOpacity = 1;
-let backgroundTheme = 'dark'; // 'dark' | 'light'
+let backgroundColor = '#000000';
 
 /* ===== Helpers ===== */
 
@@ -54,7 +55,8 @@ const DEFAULT_SETTINGS = {
   windowBounds: { width: 900, height: 600 },
   isFullScreen: false,
   sidebarOpen: false,
-  background: { opacity: 1, theme: "dark" },
+  background: { opacity: 1, color: '#000000' },
+  recentFiles: [],
 };
 
 function deepMerge(base, patch) {
@@ -107,7 +109,9 @@ function writeSettingsSync(patch) {
 function createWindow() {
   const settings = readSettingsSync();
   backgroundOpacity = settings.background.opacity ?? 1;
-  backgroundTheme = settings.background.theme ?? 'dark';
+  // Migrate old theme-based setting to hex color
+  backgroundColor = settings.background.color
+    ?? (settings.background.theme === 'light' ? '#ffffff' : '#000000');
 
   const iconPath = path.join(__dirname, '../src/images/icon.png');
   mainWindow = new BrowserWindow({
@@ -120,6 +124,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
+
 
   if (settings.isFullScreen) {
     mainWindow.setFullScreen(true);
@@ -141,7 +146,7 @@ function createWindow() {
     mainWindow.webContents.send(
       'app:background-changed',
       backgroundOpacity,
-      backgroundTheme
+      backgroundColor
     );
     mainWindow.webContents.send('app:full-screen-changed', mainWindow.isFullScreen());
     if (pendingOpenFilePath) {
@@ -165,7 +170,7 @@ function createWindow() {
       windowBounds: { width: bounds.width, height: bounds.height },
       // Always start in windowed mode on next launch.
       isFullScreen: false,
-      background: { opacity: backgroundOpacity, theme: backgroundTheme },
+      background: { opacity: backgroundOpacity, color: backgroundColor },
     });
   });
 
@@ -214,6 +219,7 @@ if (!gotLock) {
     const pathFromArgv = getFilePathFromArgv(process.argv, process.cwd());
     if (pathFromArgv) pendingOpenFilePath = pathFromArgv;
     createWindow();
+    setupAutoUpdater();
   });
 }
 
@@ -256,34 +262,30 @@ ipcMain.on("ui:toggle-fullscreen", () => {
 
 /* ===== IPC: Background ===== */
 
-ipcMain.on('ui:toggle-background', () => {
-  if (backgroundOpacity === 1) backgroundOpacity = 0.5;
-  else if (backgroundOpacity === 0.5) backgroundOpacity = 0;
-  else backgroundOpacity = 1;
-
-  writeSettingsSync({ background: { opacity: backgroundOpacity, theme: backgroundTheme } });
-
-  mainWindow?.webContents.send(
-    'app:background-changed',
-    backgroundOpacity,
-    backgroundTheme
-  );
-});
-
-ipcMain.on('ui:toggle-background-theme', () => {
-  backgroundTheme = backgroundTheme === 'dark' ? 'light' : 'dark';
-  writeSettingsSync({ background: { opacity: backgroundOpacity, theme: backgroundTheme } });
-
-  mainWindow?.webContents.send(
-    'app:background-changed',
-    backgroundOpacity,
-    backgroundTheme
-  );
+ipcMain.on('ui:set-background', (_event, color, opacity) => {
+  if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) {
+    backgroundColor = color;
+  }
+  if (typeof opacity === 'number' && opacity >= 0 && opacity <= 1) {
+    backgroundOpacity = opacity;
+  }
+  writeSettingsSync({ background: { opacity: backgroundOpacity, color: backgroundColor } });
+  mainWindow?.webContents.send('app:background-changed', backgroundOpacity, backgroundColor);
 });
 
 /* ===== IPC: Open file ===== */
 
-const VALID_EXTENSIONS = ['json', 'lottie', 'webm'];
+const VALID_EXTENSIONS = ['json', 'lottie', 'webm', 'gif'];
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp']; // used only for open-image-file IPC
+
+function addRecentFile(filePath) {
+  try {
+    const settings = readSettingsSync();
+    const recent = ((settings.recentFiles) || []).filter(p => p !== filePath);
+    recent.unshift(filePath);
+    writeSettingsSync({ recentFiles: recent.slice(0, 10) });
+  } catch { /* ignore */ }
+}
 
 /**
  * From process.argv (or second-instance argv), find the first path that is a supported file.
@@ -313,7 +315,7 @@ function getFilePathFromArgv(argv, cwd) {
 function loadAndSendFile(filePath) {
   if (!mainWindow) return;
 
-  const ext = path.extname(filePath).toLowerCase().replace('.', '');
+  const ext  = path.extname(filePath).toLowerCase().replace('.', '');
   const name = path.basename(filePath);
 
   if (!VALID_EXTENSIONS.includes(ext)) {
@@ -335,6 +337,7 @@ function loadAndSendFile(filePath) {
     if (ext === 'json') {
       const text = fs.readFileSync(filePath, 'utf-8');
       mainWindow.webContents.send('app:file-changed', { ...baseFile, text });
+      addRecentFile(filePath);
       return;
     }
 
@@ -342,23 +345,19 @@ function loadAndSendFile(filePath) {
       const buffer = fs.readFileSync(filePath);
       mainWindow.webContents.send('app:file-changed', {
         ...baseFile,
-        buffer: buffer.buffer.slice(
-          buffer.byteOffset,
-          buffer.byteOffset + buffer.byteLength
-        ),
+        buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
       });
+      addRecentFile(filePath);
       return;
     }
 
-    if (ext === 'webm') {
+    if (ext === 'webm' || ext === 'gif') {
       const buffer = fs.readFileSync(filePath);
       mainWindow.webContents.send('app:file-changed', {
         ...baseFile,
-        buffer: buffer.buffer.slice(
-          buffer.byteOffset,
-          buffer.byteOffset + buffer.byteLength
-        ),
+        buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
       });
+      addRecentFile(filePath);
       return;
     }
 
@@ -366,6 +365,20 @@ function loadAndSendFile(filePath) {
     console.error('[ERROR] Failed to read file:', err);
   }
 }
+
+/* ===== IPC: Recent files ===== */
+ipcMain.handle('get-recent-files', async () => {
+  const settings = readSettingsSync();
+  const recent = (settings.recentFiles || []).filter(p => {
+    try { return fs.existsSync(p); } catch { return false; }
+  });
+  // Return with metadata
+  return recent.map(p => ({
+    path: p,
+    name: path.basename(p),
+    extension: path.extname(p).toLowerCase().replace('.', ''),
+  }));
+});
 
 ipcMain.on('ui:open-file', async () => {
   if (!mainWindow) return;
@@ -390,7 +403,7 @@ ipcMain.on('ui:open-file-by-path', (_event, filePath) => {
 
 function isSupportedFileName(name) {
   const ext = path.extname(name).toLowerCase();
-  return ext === ".webm" || ext === ".json" || ext === ".lottie";
+  return ext === ".webm" || ext === ".json" || ext === ".lottie" || ext === ".gif";
 }
 
 ipcMain.handle("get-directory-files", async (_event, dirPath) => {
@@ -475,9 +488,132 @@ ipcMain.handle("open-file", async (_event, filePath) => {
   return true;
 });
 
+/* ===== IPC: Open background image (Compose mode) ===== */
+
+ipcMain.handle('open-image-file', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select background image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths?.length) return null;
+  try {
+    const buf  = await fsp.readFile(result.filePaths[0]);
+    const ext  = path.extname(result.filePaths[0]).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return { dataUrl: `data:${mime};base64,${buf.toString('base64')}` };
+  } catch (err) {
+    console.error('[IMAGE] Failed to load:', err);
+    return null;
+  }
+});
+
+/* ===== IPC: Read image files for export (external Lottie images) ===== */
+
+ipcMain.handle('read-image-files', async (_event, dirPath) => {
+  if (typeof dirPath !== 'string' || !dirPath) return {};
+  try {
+    const entries = await fsp.readdir(dirPath, { withFileTypes: true });
+    const result = {};
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) continue;
+      const fullPath = path.join(dirPath, entry.name);
+      const buf = await fsp.readFile(fullPath);
+      const mime =
+        ext === '.png'  ? 'image/png'  :
+        ext === '.webp' ? 'image/webp' :
+        ext === '.gif'  ? 'image/gif'  : 'image/jpeg';
+      result[entry.name] = `data:${mime};base64,${buf.toString('base64')}`;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+});
+
+/* ===== IPC: Save exported file (MP4 / WebM / GIF) ===== */
+
+const FORMAT_FILTERS = {
+  mp4:  [{ name: 'MP4 Video',  extensions: ['mp4']  }],
+  webm: [{ name: 'WebM Video', extensions: ['webm'] }],
+  gif:  [{ name: 'GIF Image',  extensions: ['gif']  }],
+};
+
+ipcMain.handle('save-mp4', async (_event, buffer, defaultName) => {
+  if (!mainWindow) return null;
+  const ext = (defaultName || '').split('.').pop()?.toLowerCase() || 'mp4';
+  const filters = FORMAT_FILTERS[ext] || FORMAT_FILTERS.mp4;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save file',
+    defaultPath: defaultName || 'animation.mp4',
+    filters,
+  });
+  if (result.canceled || !result.filePath) return null;
+  await fsp.writeFile(result.filePath, Buffer.from(buffer));
+  return result.filePath;
+});
+
+ipcMain.handle('reveal-in-explorer', async (_event, filePath) => {
+  if (typeof filePath === 'string') shell.showItemInFolder(filePath);
+});
+
 /* ===== IPC: open URL in system default browser ===== */
 
 ipcMain.handle("open-external-url", async (_event, url) => {
   if (typeof url !== "string" || !url.startsWith("http")) return;
   shell.openExternal(url);
+});
+
+/* ===== Auto-updater ===== */
+
+function setupAutoUpdater() {
+  // In dev mode there's nothing to update — skip silently.
+  if (process.env.ELECTRON_RENDERER_URL) return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  const send = (channel, ...args) => mainWindow?.webContents?.send(channel, ...args);
+
+  autoUpdater.on("update-available", (info) => {
+    send("update:available", info.version);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    send("update:not-available");
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    send("update:download-progress", Math.floor(progress.percent));
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    send("update:downloaded", info.version);
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("[updater] error:", err.message);
+  });
+
+  // Check for updates 5 seconds after launch (non-blocking).
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
+}
+
+// IPC: renderer can trigger install-and-restart
+ipcMain.on("update:install", () => {
+  autoUpdater.quitAndInstall();
+});
+
+// IPC: manual check from renderer
+ipcMain.handle("update:check", async () => {
+  if (process.env.ELECTRON_RENDERER_URL) return null;
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return result?.updateInfo?.version ?? null;
+  } catch {
+    return null;
+  }
 });

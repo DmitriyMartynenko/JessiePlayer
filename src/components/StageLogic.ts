@@ -16,9 +16,11 @@ import {
 import { JsonPlayer } from "../players/JsonPlayer/JsonPlayer";
 import { LottiePlayer } from "../players/LottiePlayer/LottiePlayer";
 import { WebmPlayer } from "../players/WebmPlayer/WebmPlayer";
+import { GifPlayer } from "../players/GifPlayer/GifPlayer";
 import { FallbackPlayer } from "../players/FallbackPlayer/FallbackPlayer";
+import { useUiStore } from "../store/uiStore";
 
-const VALID_EXTENSIONS = ["json", "lottie", "webm"];
+const VALID_EXTENSIONS = ["json", "lottie", "webm", "gif"];
 
 export interface StageLogicState {
   status: PlayerStatus;
@@ -67,11 +69,11 @@ export function useStageLogic(
     useState<AnimationDiagnostics | null>(null);
 
   // ─────────────────────────────────────────────
-  // SCALE SYSTEM
+  // SCALE SYSTEM (scaleMode from global store for TopBar menu)
   // ─────────────────────────────────────────────
 
-  const [scaleMode, setScaleMode] =
-    useState<PlayerProps["scaleMode"]>("fit");
+  const scaleMode = useUiStore((s) => s.scaleMode);
+  const setScaleMode = useUiStore((s) => s.actions.setScaleMode);
 
   const [scale, setScale] = useState<number>(1);
 
@@ -123,16 +125,23 @@ export function useStageLogic(
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.types.includes("Files")) {
-      setIsDragOver(true);
-      e.dataTransfer.dropEffect = "copy";
-    }
+    // Set dropEffect unconditionally — required for drop to fire in all browsers.
+    // Don't gate on types.includes("Files") since on some Electron builds
+    // the types array may be empty during dragover on the empty-state element.
+    e.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+    // Only clear when cursor actually leaves the drop zone, not when
+    // moving between child elements.
+    try {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+        setIsDragOver(false);
+      }
+    } catch {
       setIsDragOver(false);
     }
   };
@@ -151,7 +160,7 @@ export function useStageLogic(
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!ext || !VALID_EXTENSIONS.includes(ext)) return;
 
-    // Electron exposes file.path for dropped files from filesystem
+    // In Electron, File objects from OS drag-and-drop expose .path
     const filePath = (file as File & { path?: string }).path;
     if (filePath) {
       onFileDrop(filePath);
@@ -179,6 +188,8 @@ export function useStageLogic(
         return LottiePlayer;
       case "webm":
         return WebmPlayer;
+      case "gif":
+        return GifPlayer;
       default:
         return FallbackPlayer;
     }
@@ -230,19 +241,16 @@ export function useStageLogic(
 
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
-        setScaleMode("original");
         zoomBy(0.1);
       }
 
       if (e.key === "-") {
         e.preventDefault();
-        setScaleMode("original");
         zoomBy(-0.1);
       }
 
       if (e.key === "0") {
         e.preventDefault();
-        setScaleMode("original");
         resetZoom();
       }
     };

@@ -36,24 +36,15 @@ contextBridge.exposeInMainWorld('api', {
     });
   },
 
-  /* ===== Stage / background ===== */
-
-  toggleBackground: () => {
-    console.log('[preload] Toggle background clicked');
-    ipcRenderer.send('ui:toggle-background');
-  },
-
-  toggleBackgroundTheme: () => {
-    console.log('[preload] Toggle background theme (right-click)');
-    ipcRenderer.send('ui:toggle-background-theme');
-  },
-
   /* ===== Background ===== */
 
+  setBackground: (color, opacity) => {
+    ipcRenderer.send('ui:set-background', color, opacity);
+  },
+
   onBackgroundChanged: (callback) => {
-    ipcRenderer.on('app:background-changed', (_event, opacity, theme) => {
-      console.log('[preload] Background changed:', opacity, theme);
-      callback(opacity, theme ?? 'dark');
+    ipcRenderer.on('app:background-changed', (_event, opacity, color) => {
+      callback(opacity, color ?? '#000000');
     });
   },
 
@@ -93,16 +84,58 @@ contextBridge.exposeInMainWorld('api', {
     return ipcRenderer.invoke("open-external-url", url);
   },
 
+  openImageFile: () => {
+    return ipcRenderer.invoke('open-image-file');
+  },
+
+  readImageFiles: (dirPath) => {
+    return ipcRenderer.invoke('read-image-files', dirPath);
+  },
+
+  saveMp4: (buffer, defaultName) => {
+    return ipcRenderer.invoke('save-mp4', buffer, defaultName);
+  },
+
+  revealInExplorer: (filePath) => {
+    return ipcRenderer.invoke('reveal-in-explorer', filePath);
+  },
+
   onFileChanged: (callback) => {
     ipcRenderer.on('app:file-changed', (_event, fileInfo) => {
       callback(fileInfo);
     });
   },
 
+  getRecentFiles: () => {
+    return ipcRenderer.invoke('get-recent-files');
+  },
+
   onWindowStateChanged: (callback) => {
     ipcRenderer.on('app:window-state-changed', (_event, state) => {
       callback(state);
     });
+  },
+
+  /* ===== Auto-updater ===== */
+
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('update:available', (_event, version) => callback(version));
+  },
+
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update:downloaded', (_event, version) => callback(version));
+  },
+
+  onUpdateProgress: (callback) => {
+    ipcRenderer.on('update:download-progress', (_event, percent) => callback(percent));
+  },
+
+  installUpdate: () => {
+    ipcRenderer.send('update:install');
+  },
+
+  checkForUpdates: () => {
+    return ipcRenderer.invoke('update:check');
   },
 
 });

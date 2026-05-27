@@ -6,7 +6,7 @@ import JSZip from "jszip";
 // UNIFIED DIAGNOSTICS INTERFACE
 // ─────────────────────────────────────────────
 
-export type AnimationFormat = "lottie" | "webm";
+export type AnimationFormat = "lottie" | "webm" | "gif";
 
 export interface AnimationDiagnostics {
   format: AnimationFormat;
@@ -372,32 +372,119 @@ async function analyzeWebmFile(file: LoadedFile): Promise<AnimationDiagnostics> 
 }
 
 // ─────────────────────────────────────────────
+// GIF ANALYZER
+// Parses the GIF binary header to extract dimensions,
+// frame count, and per-frame delays.
+// ─────────────────────────────────────────────
+
+function analyzeGifFile(file: LoadedFile): AnimationDiagnostics {
+  const empty = (): AnimationDiagnostics => ({
+    format: "gif", width: 0, height: 0, durationSec: 0, fps: 0,
+    warnings: ["Could not parse GIF metadata"],
+  });
+
+  if (!file.buffer) return empty();
+
+  const buf = new Uint8Array(file.buffer);
+  if (buf.length < 13) return empty();
+
+  // Validate GIF signature
+  const sig = String.fromCharCode(buf[0], buf[1], buf[2]);
+  if (sig !== "GIF") return { ...empty(), warnings: ["Not a valid GIF file"] };
+
+  // Logical Screen Descriptor (bytes 6-9, little-endian)
+  const width  = buf[6] | (buf[7] << 8);
+  const height = buf[8] | (buf[9] << 8);
+
+  // Skip optional Global Color Table
+  const packed = buf[10];
+  const hasGCT = (packed >> 7) & 1;
+  const gctSize = hasGCT ? 3 * (2 ** ((packed & 0x07) + 1)) : 0;
+  let pos = 13 + gctSize;
+
+  let frameCount = 0;
+  let totalDelay = 0; // centiseconds (1/100 s)
+
+  while (pos < buf.length) {
+    const byte = buf[pos];
+    if (byte === 0x3B) break; // Trailer
+
+    if (byte === 0x21 && pos + 1 < buf.length) {
+      // Extension block
+      const label = buf[pos + 1];
+      pos += 2;
+
+      if (label === 0xF9 && pos < buf.length && buf[pos] >= 4) {
+        // GCE: buf[pos]=blockSize(4), buf[pos+1]=packed, buf[pos+2]=delay_lo, buf[pos+3]=delay_hi
+        const delay = buf[pos + 2] | (buf[pos + 3] << 8);
+        totalDelay += delay > 0 ? delay : 10;
+      }
+      // Correct: skip from block-size byte (do NOT pos++ first)
+      while (pos < buf.length && buf[pos] !== 0) {
+        pos += buf[pos] + 1;
+      }
+      pos++; // block terminator
+
+    } else if (byte === 0x2C) {
+      // Image Descriptor → one frame
+      frameCount++;
+      if (pos + 9 >= buf.length) break;
+
+      const lctFlags = buf[pos + 9];
+      const hasLCT   = (lctFlags >> 7) & 1;
+      const lctSize  = hasLCT ? 3 * (2 ** ((lctFlags & 0x07) + 1)) : 0;
+      pos += 10 + lctSize + 1; // descriptor + LCT + LZW min code size
+
+      // Skip image sub-blocks
+      while (pos < buf.length && buf[pos] !== 0) {
+        pos += buf[pos] + 1;
+      }
+      pos++;
+    } else {
+      pos++;
+    }
+  }
+
+  const durationSec = totalDelay / 100;
+  const fps = frameCount > 1 && durationSec > 0
+    ? parseFloat((frameCount / durationSec).toFixed(1))
+    : frameCount === 1 ? 0 : 10;
+
+  return {
+    format: "gif",
+    width,
+    height,
+    durationSec: parseFloat(durationSec.toFixed(2)),
+    fps,
+    frames: frameCount,
+    warnings: [],
+  };
+}
+
+// ─────────────────────────────────────────────
 // UNIFIED ANALYZER API
 // ─────────────────────────────────────────────
 
 export async function analyzeAnimation(
   file: LoadedFile | null
 ): Promise<AnimationDiagnostics | null> {
-  if (!file) {
-    return null;
-  }
+  if (!file) return null;
 
   try {
     if (file.extension === "json" || file.extension === "lottie") {
       return await analyzeLottieFile(file);
     } else if (file.extension === "webm") {
       return await analyzeWebmFile(file);
+    } else if (file.extension === "gif") {
+      return analyzeGifFile(file);
     }
   } catch (err) {
     console.error("[Animation Analyzer] Error:", err);
-    return {
-      format: file.extension === "webm" ? "webm" : "lottie",
-      width: 0,
-      height: 0,
-      durationSec: 0,
-      fps: 0,
-      warnings: ["Unreadable metadata"],
-    };
+    const fmt: AnimationFormat =
+      file.extension === "webm" ? "webm"
+      : file.extension === "gif" ? "gif"
+      : "lottie";
+    return { format: fmt, width: 0, height: 0, durationSec: 0, fps: 0, warnings: ["Unreadable metadata"] };
   }
 
   return null;
