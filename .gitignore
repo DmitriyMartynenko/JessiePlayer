@@ -41,8 +41,9 @@ Thumbs.db
 .env
 .env.*
 
-# Claude Code local settings (personal, machine-specific)
+# Claude Code (AI assistant instructions and local settings)
 .claude/
+CLAUDE.md
 
 # Personal / social media drafts
 sotialnet/
