@@ -1,7 +1,7 @@
 {
   "name": "jessie-player",
   "productName": "Jessie Player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Dmytro martynenko <dmitriy.martynenko150@gmail.com>",
   "description": "Animation player for JSON, Lottie, and WebM",
   "private": true,
@@ -51,7 +51,8 @@
     "publish": {
       "provider": "github",
       "owner": "DmitriyMartynenko",
-      "repo": "JessiePlayer"
+      "repo": "JessiePlayer",
+      "releaseType": "release"
     },
     "directories": {
       "output": "release"

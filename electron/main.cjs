@@ -26,6 +26,43 @@ let lastBounds = null;
 let backgroundOpacity = 1;
 let backgroundColor = '#000000';
 
+/* ===== File watcher (hot-reload on external file change) ===== */
+
+let fileWatcher = null;
+let watchedFilePath = null;
+let reloadDebounce = null;
+
+function stopWatcher() {
+  if (reloadDebounce) { clearTimeout(reloadDebounce); reloadDebounce = null; }
+  if (fileWatcher)    { fileWatcher.close(); fileWatcher = null; }
+  watchedFilePath = null;
+}
+
+function watchFile(filePath) {
+  if (watchedFilePath === filePath) return; // already watching this file
+  stopWatcher();
+  watchedFilePath = filePath;
+
+  const dir  = path.dirname(filePath);
+  const base = path.basename(filePath);
+
+  try {
+    // Watch the directory so atomic saves (write-temp → rename) are caught too
+    fileWatcher = fs.watch(dir, (eventType, filename) => {
+      if (filename !== base) return;
+      if (reloadDebounce) clearTimeout(reloadDebounce);
+      reloadDebounce = setTimeout(() => {
+        if (fs.existsSync(filePath)) loadAndSendFile(filePath);
+      }, 300);
+    });
+    fileWatcher.on('error', () => {
+      if (fileWatcher) { fileWatcher.close(); fileWatcher = null; }
+    });
+  } catch {
+    watchedFilePath = null;
+  }
+}
+
 /* ===== Helpers ===== */
 
 function loadJSON(filePath, fallback) {
@@ -224,6 +261,7 @@ if (!gotLock) {
 }
 
 app.on('window-all-closed', () => {
+  stopWatcher();
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -325,6 +363,7 @@ function loadAndSendFile(filePath) {
 
   try {
     const stats = fs.statSync(filePath);
+    watchFile(filePath);
 
     const baseFile = {
       id: `${Date.now()}-${Math.random()}`,
